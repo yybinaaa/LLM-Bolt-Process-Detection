@@ -116,6 +116,46 @@ boltcheck pilot --gpu-monitor    # 依次运行并评测，最后打印每项的
 
 `boltcheck run` 也可以用 `--ids` 指定样本，例如 `--ids v1.1-0001 v1.1-0005`。
 
+### 全量基线与大模型对比
+
+先用现在的本地模型在全部 200 条样本上跑一遍（提示词冻结在 v1.6），得到复原效果和基于复原的识别效果，再用大模型跑同样的两组做对比。
+
+1. 本地 Qwen3-4B，第 5 组（复原 + 判断）和第 4 组（只判断），约 1.5～2.5 小时：
+
+   ```bash
+   git pull
+   boltcheck pilot --config configs/runs/full-qwen3-4b.toml --gpu-monitor
+   ```
+
+   请在启动 vLLM 前、启动后各运行一次 `nvidia-smi`，把两次读数写进 exp PR 的说明。中断了用 `boltcheck run --resume runs/<运行目录>` 续跑。
+
+2. 大模型参考：在 `configs/models.toml` 中已配好四个（模型名以各家文档为准，可直接改 `model`）：
+
+   | 名称 | 模型 | 密钥环境变量 |
+   |---|---|---|
+   | `claude-opus` | claude-opus-5-5 | `ANTHROPIC_API_KEY` |
+   | `gpt` | gpt-6-astra | `OPENAI_API_KEY` |
+   | `gemini` | gemini-3.1-pro-preview | `GEMINI_API_KEY` |
+   | `deepseek` | deepseek-v4-pro | `DEEPSEEK_API_KEY` |
+
+   PowerShell 中设置密钥（只对当前窗口有效，不要写进仓库）：
+
+   ```powershell
+   $env:ANTHROPIC_API_KEY = "sk-..."
+   $env:DEEPSEEK_API_KEY  = "sk-..."
+   ```
+
+   先跑 8 条确认接口、输出格式和费用，再跑全量：
+
+   ```bash
+   boltcheck pilot --config configs/runs/api-check.toml
+   boltcheck pilot --config configs/runs/api-full.toml
+   ```
+
+   没设置密钥的模型会报错跳过，其余照常。大模型用 `api` 配置：不指定温度（各家默认值；部分推理模型不接受温度 0）、输出上限 16384 token（含思考过程）。按 token 计费，第 5 组每条样本约输入 3～4 千 token；思考型模型的输出可能达到数千 token，请先看 8 条的实际用量再估算全量费用。
+
+3. 看结果时重点对比：整矩阵正确率、逐格清单准确率（复原），合规判断准确率、违规检出率、合规误报率、首次违规步定位准确率（识别），以及第 4 组与第 5 组之差（复原误差造成的损失）。
+
 ### 手动运行
 
 建议顺序：
@@ -200,4 +240,4 @@ boltcheck evaluate runs/<运行 ID>
 - **显存不够**：调小 `--max-model-len`，或加 `--kv-cache-dtype fp8`。注意 `--gpu-memory-utilization` 是占整张卡的比例，桌面程序占用的显存也要算进去。
 - **显存读数偏高**：报告里有两个读数："整卡"包含桌面等其他程序，"计算进程"通常就是 vLLM 本身（Windows 上可能读不到，这时请在启动 vLLM 前后各看一次 `nvidia-smi`，用差值作为服务占用，并写进日志备注）。vLLM 启动时会按 `--gpu-memory-utilization` 预先占满给它的显存，`--gpu-monitor` 记录的是整张卡的实际占用（含其他程序），主要用于确认服务没有超过 5GB，不等于模型的最小需求。
 - **用 Ollama、llama.cpp 或 LM Studio 代替 vLLM**：如果最终部署在 3～5GB 的小卡上，这类运行方式通常比 vLLM 更省显存。它们都提供 OpenAI 兼容接口，在 `configs/models.toml` 里新增一个模型条目，把 `base_url` 和 `model` 改成对应的地址和名称即可。部分采样参数（如 `top_k`、`seed`）可能不生效，结果需在备注中注明。
-- **用远程 API 做上限参考**：在 `configs/models.toml` 的 `api-reference` 里填好地址和模型名，设置环境变量 `LLM_API_KEY` 后运行 `--model api-reference --profile greedy`。
+- **用远程 API 做上限参考**：见第 6 节"全量基线与大模型对比"。

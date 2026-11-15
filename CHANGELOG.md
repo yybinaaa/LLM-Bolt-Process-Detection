@@ -2,11 +2,28 @@
 
 本文件记录实验方案、数据集与代码的重要变更，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。方案正文以 `docs/experiment-plan.md` 为准，逐行改动可在 Git 提交记录中查看。版本规则见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-## [未发布]
+## [代码 0.10.0] - 2026-11-15
+
+对应方案 v1.12、提示词 v1.6（提示词不变）。
 
 ### 新增
 
+- 大模型参考配置（configs/models.toml）：claude-opus（claude-opus-5-5）、gpt（gpt-6-astra）、gemini（gemini-3.1-pro-preview）、deepseek（deepseek-v4-pro），均走各家 OpenAI 兼容接口，密钥从环境变量读取；采样配置 `api` 不指定温度、输出上限 16384 token。替换原来的占位条目 api-reference。
+- 运行清单 configs/runs/：full-qwen3-4b.toml（本地模型全量 200 条，第 5 组 + 第 4 组）、api-check.toml（大模型 8 条确认）、api-full.toml（大模型全量）；用 `boltcheck pilot --config <清单>` 运行。
+- 模型配置项 `rename_params`（如 OpenAI 新模型要求 max_completion_tokens）；`drop_params` 中写 seed 时不再发送 seed。
+- 测试：各运行清单的模型与配置可用、远程 API 请求参数（共 59 项）。
 - 登记 Qwen3-4B INT4 提示词 v1.6 两阶段自动试跑（5 条，运行 20261115-220216_pipeline_qwen3-4b-instruct-2507-int4_greedy），附原始结果、查看器与 GitHub 实验归档链接；本次为试跑。
+
+### 修改
+
+- 运行前连通性检查：远程 API 只检查能否连上，不再核对模型列表（各家 /models 的鉴权和写法不同）；本地服务照旧核对模型名。
+
+## [方案 v1.12] - 2026-11-15
+
+### 修改
+
+- 第七节：上限参考确定为四个大模型；新增"全量基线与大模型对比"的做法与判读方式。
+- 第九节：按对比结论选择提升路线（微调、思考模式、蒸馏，或改写任务表述）。
 
 ## [代码 0.9.0] - 2026-11-15
 

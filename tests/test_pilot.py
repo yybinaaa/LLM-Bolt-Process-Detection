@@ -47,3 +47,32 @@ def test_run_pilot_runs_each_entry_and_survives_failures(tmp_path):
         assert meta["ids"] == ["v1.1-0001", "v1.1-0005", "v1.1-0008"] and metrics["summary"]["n"] == 3
         assert "测试" in meta["note"] and "|" in r["log_row"]
     assert "no-such-profile" in results[1]["error"]
+
+
+@pytest.mark.parametrize("cfg_path", sorted((ROOT / "configs" / "runs").glob("*.toml")) + [ROOT / "configs" / "pilot.toml"])
+def test_run_lists_reference_valid_models(cfg_path, monkeypatch):
+    """各运行清单里的模型、配置都能在 configs/models.toml 中找到并组合使用（密钥用占位值）。"""
+    from boltcheck.runner import resolve_backend
+
+    for env in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "DEEPSEEK_API_KEY"):
+        monkeypatch.setenv(env, "test-key")
+    cfg = load_pilot(cfg_path)
+    if cfg.get("ids"):
+        select_samples(SAMPLES, ids=cfg["ids"])
+    for r in cfg["runs"]:
+        resolve_backend(r.get("backend", "openai"), str(ROOT / "configs" / "models.toml"), r.get("model", cfg.get("model")), r["profile"])
+
+
+def test_api_models_send_clean_params(monkeypatch):
+    """远程 API：去掉 vLLM 扩展字段和 seed、不设温度；OpenAI 把 max_tokens 改名为 max_completion_tokens。"""
+    from boltcheck.runner import resolve_backend
+
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    cfg = str(ROOT / "configs" / "models.toml")
+    gpt, _ = resolve_backend("openai", cfg, "gpt", "api")
+    assert gpt.params == {"max_completion_tokens": 16384} and gpt.seed is None and not gpt.local
+    claude, info = resolve_backend("openai", cfg, "claude-opus", "api")
+    assert claude.params == {"max_tokens": 16384} and claude.seed is None and info["served_model"] == "claude-opus-5-5"
+    local, _ = resolve_backend("openai", cfg, "qwen3-4b-instruct-2507-int4", "greedy")
+    assert local.local and local.seed == 1234 and "chat_template_kwargs" in local.params
