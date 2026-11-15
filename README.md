@@ -37,8 +37,8 @@ boltcheck run --model qwen3-4b-instruct-2507-int4 --profile greedy --group joint
 
 ## 文档
 
-- [实验方案](docs/experiment-plan.md)：当前版本 v1.8（提示词 v1.4），修改历史见 Git 提交记录
-- Word 版本：[v1.8](docs/experiment-plan-v1.8.docx)（当前）、[v1.7](docs/experiment-plan-v1.7.docx)、[v1.6](docs/experiment-plan-v1.6.docx)、[v1.5](docs/experiment-plan-v1.5.docx)、[v1.4](docs/experiment-plan-v1.4.docx)、[v1.3](docs/experiment-plan-v1.3.docx)、[v1.2](docs/experiment-plan-v1.2.docx)、[v1.1](docs/experiment-plan-v1.1.docx)、[v1.0](docs/experiment-plan-v1.0.docx)（原稿）
+- [实验方案](docs/experiment-plan.md)：当前版本 v1.9（提示词 v1.4），修改历史见 Git 提交记录
+- Word 版本：[v1.9](docs/experiment-plan-v1.9.docx)（当前）、[v1.8](docs/experiment-plan-v1.8.docx)、[v1.7](docs/experiment-plan-v1.7.docx)、[v1.6](docs/experiment-plan-v1.6.docx)、[v1.5](docs/experiment-plan-v1.5.docx)、[v1.4](docs/experiment-plan-v1.4.docx)、[v1.3](docs/experiment-plan-v1.3.docx)、[v1.2](docs/experiment-plan-v1.2.docx)、[v1.1](docs/experiment-plan-v1.1.docx)、[v1.0](docs/experiment-plan-v1.0.docx)（原稿）
 - [本地运行指南](docs/running.md)
 - [实验日志](docs/experiment-log.md)：正式实验结果登记
 - [迭代规范](CONTRIBUTING.md)：版本号、分支、提交信息、实验登记
