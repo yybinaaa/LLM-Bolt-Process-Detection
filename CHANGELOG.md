@@ -2,6 +2,28 @@
 
 本文件记录实验方案、数据集与代码的重要变更，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。方案正文以 `docs/experiment-plan.md` 为准，逐行改动可在 Git 提交记录中查看。版本规则见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
+## [代码 0.11.0] - 2026-11-15
+
+对应方案 v1.13、提示词 v1.6（提示词不变）。
+
+### 修改
+
+- 下一步改为先看 10 条：固定的 10 条样本（数据集前 8 条加 v1.1-0015、0019，合规、不合规各 5 条），自动试跑清单 configs/pilot.toml 也改用这 10 条。
+- 大模型参考改为 DeepSeek 和 GLM：运行清单 configs/runs/api-10.toml（两个模型 × 开启/关闭思考 × 第 5、4 组）、configs/runs/qwen3-4b-10.toml（本地模型同样 10 条）；删除 api-check.toml，api-full.toml 改为 DeepSeek 和 GLM（以后用）。
+- 采样配置 `api` 的输出上限改为 32768 token（DeepSeek、GLM 默认开启思考，思考过程计入上限）；DeepSeek 超时改为 1800 秒。
+
+### 新增
+
+- 模型 `glm`（glm-5.3，智谱开放平台 OpenAI 兼容接口，密钥 `ZAI_API_KEY`）。
+- 采样配置 `api-nothink`：thinking.type = disabled，输出上限 8192 token，作为关闭思考的对照。
+- 测试：三份 10 条清单样本一致、GLM 关闭思考的请求参数（共 61 项）。
+
+## [方案 v1.13] - 2026-11-15
+
+### 修改
+
+- 第七节：下一步先用 10 条样本看效果；上限参考改为 DeepSeek 和 GLM，各跑开启、关闭思考两种；试跑样本统一为这 10 条。
+
 ## [代码 0.10.0] - 2026-11-15
 
 对应方案 v1.12、提示词 v1.6（提示词不变）。

@@ -1,4 +1,4 @@
-# 全量基线（方案 v1.12）：Qwen3-4B INT4 在 v1.1 全部 200 条样本上（合规、不合规各 100 条），提示词冻结在 v1.6。
+# 全量基线（以后用）：Qwen3-4B INT4 在 v1.1 全部 200 条样本上（合规、不合规各 100 条），提示词冻结在 v1.6。
 #   boltcheck pilot --config configs/runs/full-qwen3-4b.toml --gpu-monitor
 # 预计耗时：第 5 组约 1～2 小时（每条两次调用），第 4 组约 20～30 分钟。中断后可用 boltcheck run --resume <运行目录> 续跑。
 

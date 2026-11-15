@@ -104,7 +104,7 @@ curl http://localhost:8000/v1/models
 
 ### 自动试跑（本地定时任务用）
 
-试跑清单写在 `configs/pilot.toml`：固定的 8 条样本（合规、不合规各 4 条），以及这一轮要跑的组和配置。清单由 Claude 根据上一轮结果调整，本地只需在 main 更新后执行：
+试跑清单写在 `configs/pilot.toml`：固定的 10 条样本（合规、不合规各 5 条），以及这一轮要跑的组和配置。清单由 Claude 根据上一轮结果调整，本地只需在 main 更新后执行：
 
 ```bash
 git pull
@@ -116,45 +116,37 @@ boltcheck pilot --gpu-monitor    # 依次运行并评测，最后打印每项的
 
 `boltcheck run` 也可以用 `--ids` 指定样本，例如 `--ids v1.1-0001 v1.1-0005`。
 
-### 全量基线与大模型对比
+### 10 条基线与大模型对比
 
-先用现在的本地模型在全部 200 条样本上跑一遍（提示词冻结在 v1.6），得到复原效果和基于复原的识别效果，再用大模型跑同样的两组做对比。
+先用现在的本地模型在固定的 10 条样本上（合规、不合规各 5 条，提示词冻结在 v1.6）看复原效果和基于复原的识别效果，再用 DeepSeek 和 GLM 跑同样的 10 条做对比。三份清单用的是同一组样本，可以逐条对比。
 
-1. 本地 Qwen3-4B，第 5 组（复原 + 判断）和第 4 组（只判断），约 1.5～2.5 小时：
+1. 本地 Qwen3-4B，第 5 组（复原 + 判断）和第 4 组（只判断），约 5～10 分钟：
 
    ```bash
    git pull
-   boltcheck pilot --config configs/runs/full-qwen3-4b.toml --gpu-monitor
+   boltcheck pilot --config configs/runs/qwen3-4b-10.toml --gpu-monitor
    ```
 
-   请在启动 vLLM 前、启动后各运行一次 `nvidia-smi`，把两次读数写进 exp PR 的说明。中断了用 `boltcheck run --resume runs/<运行目录>` 续跑。
+   请在启动 vLLM 前、启动后各运行一次 `nvidia-smi`，把两次读数写进 exp PR 的说明。
 
-2. 大模型参考：在 `configs/models.toml` 中已配好四个（模型名以各家文档为准，可直接改 `model`）：
+2. 大模型（远程 API，不需要启动 vLLM）：
 
-   | 名称 | 模型 | 密钥环境变量 |
-   |---|---|---|
-   | `claude-opus` | claude-opus-5-5 | `ANTHROPIC_API_KEY` |
-   | `gpt` | gpt-6-astra | `OPENAI_API_KEY` |
-   | `gemini` | gemini-3.1-pro-preview | `GEMINI_API_KEY` |
-   | `deepseek` | deepseek-v4-pro | `DEEPSEEK_API_KEY` |
+   | 名称 | 模型 | 接口 | 密钥环境变量 |
+   |---|---|---|---|
+   | `deepseek` | deepseek-v4-pro | https://api.deepseek.com | `DEEPSEEK_API_KEY` |
+   | `glm` | glm-5.3 | https://open.bigmodel.cn/api/paas/v4 | `ZAI_API_KEY` |
 
-   PowerShell 中设置密钥（只对当前窗口有效，不要写进仓库）：
+   模型名和地址在 `configs/models.toml` 中，可以直接改（例如 GLM 换成 glm-5.2，海外账号改用 https://api.z.ai/api/paas/v4）。PowerShell 中设置密钥（只对当前窗口有效，不要写进仓库）：
 
    ```powershell
-   $env:ANTHROPIC_API_KEY = "sk-..."
-   $env:DEEPSEEK_API_KEY  = "sk-..."
+   $env:DEEPSEEK_API_KEY = "sk-..."
+   $env:ZAI_API_KEY      = "..."
+   boltcheck pilot --config configs/runs/api-10.toml
    ```
 
-   先跑 8 条确认接口、输出格式和费用，再跑全量：
+   清单依次跑：两个模型开启思考（默认）的第 5、4 组，再跑关闭思考的第 5、4 组作为对照（本地模型是非思考模式）。只设置了一个密钥时，另一个模型会报错跳过。开启思考时输出上限 32768 token、关闭思考时 8192 token（都含思考过程），不指定温度。
 
-   ```bash
-   boltcheck pilot --config configs/runs/api-check.toml
-   boltcheck pilot --config configs/runs/api-full.toml
-   ```
-
-   没设置密钥的模型会报错跳过，其余照常。大模型用 `api` 配置：不指定温度（各家默认值；部分推理模型不接受温度 0）、输出上限 16384 token（含思考过程）。按 token 计费，第 5 组每条样本约输入 3～4 千 token；思考型模型的输出可能达到数千 token，请先看 8 条的实际用量再估算全量费用。
-
-3. 看结果时重点对比：整矩阵正确率、逐格清单准确率（复原），合规判断准确率、违规检出率、合规误报率、首次违规步定位准确率（识别），以及第 4 组与第 5 组之差（复原误差造成的损失）。
+3. 看结果时重点对比：整矩阵正确率、逐格清单准确率（复原），合规判断准确率、违规检出率、合规误报率、首次违规步定位准确率（识别），以及第 4 组与第 5 组之差（复原误差造成的损失）。10 条只能看方向；结论清楚后，可以用 `configs/runs/full-qwen3-4b.toml`、`configs/runs/api-full.toml` 跑全部 200 条。
 
 ### 手动运行
 

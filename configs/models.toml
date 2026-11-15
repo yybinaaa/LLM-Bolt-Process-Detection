@@ -45,10 +45,17 @@ chat_template_kwargs = { enable_thinking = false }
 [profiles.api]
 # 大模型能力上限参考（方案 v1.12 第七节）：不指定温度，用各家默认值。
 # 当前的旗舰模型大多是推理模型，Claude 4.7 起和部分推理模型不接受温度 0（会返回 400），因此各家统一不设。
-# max_tokens 含思考过程，取得较大以免截断；按实际输出计费，不会因上限大而多收费。
+# DeepSeek、GLM 默认开启思考；max_tokens 含思考过程，取得较大以免截断，按实际输出计费。
 repeats = 1
 [profiles.api.params]
-max_tokens = 16384
+max_tokens = 32768
+
+[profiles.api-nothink]
+# 对照：关闭思考（DeepSeek、GLM 都用 thinking.type = disabled），与本地非思考模式更可比。
+repeats = 1
+[profiles.api-nothink.params]
+max_tokens = 8192
+thinking = { type = "disabled" }
 
 [profiles.thinking]
 # 思考模式：Qwen3 模型卡推荐参数（temperature 0.6、top_p 0.95、top_k 20，不用贪心解码），跑 3 次。
@@ -142,10 +149,22 @@ profiles = ["api"]
 drop_params = ["chat_template_kwargs", "top_k", "min_p", "seed"]
 
 [models.deepseek]
-# DeepSeek（OpenAI 兼容）：https://api-docs.deepseek.com/ ；旧名 deepseek-chat / deepseek-reasoner 已停用。
+# DeepSeek（OpenAI 兼容）：https://api-docs.deepseek.com/api/create-chat-completion/
+# 可用模型 deepseek-v4-pro、deepseek-flash；未指定 thinking 时默认开启思考。旧名 deepseek-chat / deepseek-reasoner 已停用。
 base_url = "https://api.deepseek.com"
 model = "deepseek-v4-pro"
 api_key_env = "DEEPSEEK_API_KEY"
-timeout_s = 900
-profiles = ["api"]
+timeout_s = 1800
+profiles = ["api", "api-nothink"]
+drop_params = ["chat_template_kwargs", "top_k", "min_p", "seed"]
+
+[models.glm]
+# 智谱 GLM（OpenAI 兼容）：https://docs.bigmodel.cn/cn/guide/develop/openai/introduction
+# 国内端点 open.bigmodel.cn；海外账号可改为 https://api.z.ai/api/paas/v4 。
+# glm-5.3 为官方接口文档中的示例模型，也可改成 glm-5.2 等；GLM 用 thinking.type 开关思考，默认开启。
+base_url = "https://open.bigmodel.cn/api/paas/v4"
+model = "glm-5.3"
+api_key_env = "ZAI_API_KEY"
+timeout_s = 1800
+profiles = ["api", "api-nothink"]
 drop_params = ["chat_template_kwargs", "top_k", "min_p", "seed"]
