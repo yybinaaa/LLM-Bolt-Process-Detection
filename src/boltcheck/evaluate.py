@@ -30,6 +30,8 @@ METRIC_NAMES = {
     "first_step_acc": "首次违规步定位准确率",
     "first_coord_acc": "首次违规坐标准确率",
     "self_consistency_rate": "自洽率",
+    "layer_label_acc": "层级标注准确率",
+    "layer_label_whole_acc": "层级标注全对比例",
     "acc_when_matrix_ok": "复原正确时的判断准确率",
     "acc_when_matrix_wrong": "复原错误时的判断准确率",
 }
@@ -77,6 +79,7 @@ def parse_record(out: dict | None, group: str) -> Parsed:
     return Parsed(
         obj=p2.obj, matrix=p1.matrix, matrix_shape_ok=p1.matrix_shape_ok, matrix_valid=p1.matrix_valid,
         verdict=p2.verdict, verdict_valid=p2.verdict_valid, first_step=p2.first_step, first_coord=p2.first_coord,
+        step_layers=p2.step_layers,
         format_valid=p1.matrix_valid and p2.format_valid,
         errors=[f"复原：{e}" for e in p1.errors] + [f"判断：{e}" for e in p2.errors],
     )
@@ -96,6 +99,7 @@ def score_row(sample: dict, out: dict | None, group: str) -> dict:
         "prompt_tokens": (out or {}).get("prompt_tokens"),
         "completion_tokens": (out or {}).get("completion_tokens"),
         "gpu_peak_mib": (out or {}).get("gpu_peak_mib"),
+        "gpu_apps_peak_mib": (out or {}).get("gpu_apps_peak_mib"),
         "groups": {
             "construction": "合规" if sample["compliant"] else sample["construction"],
             **{k: v for k, v in sample["groups"].items() if k != "boundary_hard"},
@@ -115,6 +119,13 @@ def score_row(sample: dict, out: dict | None, group: str) -> dict:
         row["verdict_ok"] = row["verdict"] == sample["verdict"]
         row["conclusion_ok"] = _conclusion_ok(row["verdict"], p.first_step, sample["verdict"], sample["first_violation_step"])
         row["coord_ok"] = row["verdict"] == "不合规" and p.first_coord == sample["first_violation_coordinate"]
+        # 层级标注：与"模型所判断的那张矩阵"推出的每步层级比较——第 4 组是标准矩阵，第 2、5 组是模型自己复原的矩阵
+        ref = truth_m if group == "judge" else (p.matrix if p.matrix_valid else None)
+        if ref is not None:
+            ref_layers = judge_matrix(ref).layers
+            got = p.step_layers or []
+            row["layer_acc"] = sum(a == b for a, b in zip(got, ref_layers)) / 64 if got else 0.0
+            row["layer_whole_ok"] = got == ref_layers
     if group in SELF_CHECK_GROUPS and p.format_valid:
         own = judge_matrix(p.matrix)
         row["consistent"] = _conclusion_ok(p.verdict, p.first_step, own.verdict, own.first_violation_step)
@@ -150,6 +161,8 @@ def compute_metrics(rows: list[dict], group: str) -> dict:
         m["unable_rate"] = _mean([r["verdict"] == "无法判断" for r in rows])
         m["first_step_acc"] = _mean([r["conclusion_ok"] for r in nc])
         m["first_coord_acc"] = _mean([r["coord_ok"] for r in nc])
+        m["layer_label_acc"] = _mean([r["layer_acc"] for r in rows if "layer_acc" in r])
+        m["layer_label_whole_acc"] = _mean([r["layer_whole_ok"] for r in rows if "layer_whole_ok" in r])
     if group in SELF_CHECK_GROUPS:
         m["self_consistency_rate"] = _mean([r["consistent"] for r in rows if "consistent" in r])
         m["acc_when_matrix_ok"] = _mean([r["conclusion_ok"] for r in rows if r["whole_ok"]])
@@ -181,6 +194,7 @@ def _perf(rows: list[dict]) -> dict:
     pt = [r["prompt_tokens"] for r in rows if r["prompt_tokens"] is not None]
     ct = [r["completion_tokens"] for r in rows if r["completion_tokens"] is not None]
     gpu = [r["gpu_peak_mib"] for r in rows if r["gpu_peak_mib"] is not None]
+    gpu_apps = [r["gpu_apps_peak_mib"] for r in rows if r.get("gpu_apps_peak_mib") is not None]
 
     def pct(q: float):
         return lat[min(len(lat) - 1, int(q * len(lat)))] if lat else None
@@ -193,6 +207,7 @@ def _perf(rows: list[dict]) -> dict:
         "completion_tokens_mean": _mean(ct),
         "completion_tokens_max": max(ct) if ct else None,
         "gpu_peak_mib": max(gpu) if gpu else None,
+        "gpu_apps_peak_mib": max(gpu_apps) if gpu_apps else None,
     }
 
 
@@ -301,7 +316,8 @@ def render_report(meta: dict, metrics: dict) -> str:
         if key in metrics["summary"]:
             lines.append(f"| {name} | {_pct(metrics['summary'][key])} |")
     lines.append("")
-    lines.append("格式无效和调用失败的样本都计入分母、按答错处理；多次重复时显示均值 ± 标准差（百分点）。")
+    lines.append("格式无效和调用失败的样本都计入分母、按答错处理；多次重复时显示均值 ± 标准差（百分点）。"
+                 "层级标注准确率与模型所判断的那张矩阵比较（第 4 组为标准矩阵，第 2、5 组为模型自己复原的矩阵）。")
 
     if "attribution" in metrics:
         total = sum(metrics["attribution"].values())
@@ -325,7 +341,8 @@ def render_report(meta: dict, metrics: dict) -> str:
         "",
         f"- 延迟：均值 {_num(perf['latency_mean_s'], '{:.2f}')} s，P50 {_num(perf['latency_p50_s'], '{:.2f}')} s，P95 {_num(perf['latency_p95_s'], '{:.2f}')} s",
         f"- token：输入均值 {_num(perf['prompt_tokens_mean'], '{:.0f}')}，输出均值 {_num(perf['completion_tokens_mean'], '{:.0f}')}，输出最大 {_num(perf['completion_tokens_max'], '{:.0f}')}",
-        f"- 峰值显存：{_num(perf['gpu_peak_mib'], '{:.0f}')} MiB",
+        f"- 峰值显存：整卡 {_num(perf['gpu_peak_mib'], '{:.0f}')} MiB（含其他程序）；"
+        f"计算进程 {_num(perf.get('gpu_apps_peak_mib'), '{:.0f}')} MiB（通常就是 vLLM，Windows 上可能读不到）",
     ]
     if metrics["invalid_examples"]:
         lines += ["", "## 格式无效示例（最多 10 条）", ""]
@@ -335,8 +352,8 @@ def render_report(meta: dict, metrics: dict) -> str:
 
 
 LOG_HEADER = (
-    "| 日期 | 运行 ID | 提交 | 数据 | 组 | 模型 / 配置 | 重复 | 格式有效 | 判断准确 | 检出率 | 误报率 | 首违步 | 整矩阵 | 自洽 | 备注 |\n"
-    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+    "| 日期 | 运行 ID | 提交 | 数据 | 提示词 | 组 | 模型 / 配置 | 重复 | 格式有效 | 判断准确 | 检出率 | 误报率 | 首违步 | 整矩阵 | 自洽 | 备注 |\n"
+    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
 )
 
 
@@ -350,7 +367,7 @@ def render_log_row(meta: dict, metrics: dict) -> str:
 
     return (
         f"| {meta['created_at'][:10]} | {meta['run_id']} | {commit or '—'} | {meta['dataset'].get('version')} "
-        f"| {meta['group']} | {meta['model']} / {meta['profile']} | {metrics['repeats']} | {g('format_valid_rate')} "
+        f"| {meta.get('prompt_version', '—')} | {meta['group']} | {meta['model']} / {meta['profile']} | {metrics['repeats']} | {g('format_valid_rate')} "
         f"| {g('verdict_acc')} | {g('detection_rate')} | {g('false_alarm_rate')} | {g('first_step_acc')} "
         f"| {g('matrix_whole_acc')} | {g('self_consistency_rate')} | {meta.get('note') or ''} |"
     )

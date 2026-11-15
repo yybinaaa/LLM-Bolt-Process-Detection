@@ -25,6 +25,7 @@ class Parsed:
     verdict_valid: bool = False
     first_step: int | None = None
     first_coord: list[int] | None = None
+    step_layers: list[int] | None = None  # 提示词 v1.2 起要求输出；不影响格式有效性，单独统计
     format_valid: bool = False
     errors: list[str] = field(default_factory=list)
 
@@ -72,6 +73,16 @@ def _as_int(v: Any) -> int | None:
     return None
 
 
+def _as_layers(v: Any) -> list[int] | None:
+    """长度 64、元素为 1～4 的整数数组；否则视为没给。"""
+    if not isinstance(v, list) or len(v) != N_BOLTS:
+        return None
+    out = [_as_int(t) for t in v]
+    if any(t is None or not 1 <= t <= 4 for t in out):
+        return None
+    return out  # type: ignore[return-value]
+
+
 def _as_coord(v: Any) -> list[int] | None:
     if isinstance(v, (list, tuple)) and len(v) == 2:
         xy = [_as_int(t) for t in v]
@@ -112,6 +123,7 @@ def parse_output(text: str, group: str) -> Parsed:
             p.errors.append(f"verdict 不在 {VERDICTS} 中: {v!r}")
         p.first_step = _as_int(obj.get("first_violation_step"))
         p.first_coord = _as_coord(obj.get("first_violation_coordinate"))
+        p.step_layers = _as_layers(obj.get("step_layers"))
         if p.verdict == "不合规" and not (p.first_step and 1 <= p.first_step <= N_BOLTS):
             p.errors.append("判为不合规但 first_violation_step 不是 1～64 的整数")
 

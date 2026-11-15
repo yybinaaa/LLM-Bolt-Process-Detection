@@ -140,3 +140,50 @@ def test_pipeline_two_stage_calls_and_metrics(tmp_path):
     assert sum(m["attribution"].values()) > 0
     data_view = (run_dir / "view.html").read_text(encoding="utf-8")
     assert "第 5 组" in data_view
+
+
+def test_prompt_v12_content():
+    from boltcheck.prompts import PROMPT_VERSION, build_judge_prompt
+
+    assert PROMPT_VERSION == "v1.2"
+    s = VIOLATING
+    p = build_prompt("restore", s)
+    x, y = s["coords"][0]
+    assert f"第1步 ({x},{y})" in p and f"第64步 ({s['coords'][63][0]},{s['coords'][63][1]})" in p
+    assert "本身不是螺栓位置" in p and "标注的步数" in p
+    j = build_judge_prompt(s["order_matrix"])
+    assert "5 − min(r, c, 9−r, 9−c)" in j and "各层剩余" in j
+    assert j.index("step_layers：") < j.index("verdict：")  # 先写层级、后下结论
+    jt = build_prompt("joint", s)
+    assert jt.index("order_matrix：") < jt.index("step_layers：") < jt.index("verdict：")
+
+
+def test_step_layers_parse_and_metric():
+    s = VIOLATING
+    good = answer(None, s["verdict"], s["first_violation_step"])
+    obj = json.loads(good)
+    obj["step_layers"] = s["layers"]
+    row = score_row(s, {"text": json.dumps(obj, ensure_ascii=False)}, "judge")
+    assert row["layer_acc"] == 1.0 and row["layer_whole_ok"]
+    obj["step_layers"] = s["layers"][:63]  # 长度不对视为没给
+    assert parse_output(json.dumps(obj), "judge").step_layers is None
+    row = score_row(s, {"text": json.dumps(obj, ensure_ascii=False)}, "judge")
+    assert row["layer_acc"] == 0.0 and row["format_valid"]  # 不影响格式有效性
+
+
+def test_noisy_run_has_layer_metric(tmp_path):
+    info = {"backend": "noisy", "model": "noisy", "profile": "-", "repeats": 1, "params": {}}
+    run_dir = run_experiment(str(DATA), "judge", NoisyBackend(), info, out_root=str(tmp_path), limit=60, log=lambda *_: None)
+    s = evaluate_run(run_dir)["summary"]
+    assert 0.9 < s["layer_label_acc"]["mean"] < 1.0
+    assert s["layer_label_whole_acc"]["mean"] < 1.0
+
+
+def test_gpu_monitor_peaks():
+    from boltcheck.runner import GpuMonitor
+
+    m = GpuMonitor()
+    m.samples = [(1.0, 6000), (2.0, 6600), (3.0, 6100)]
+    m.app_samples = [(1.0, 4300), (2.0, 4700)]
+    assert m.peak_between(0.5, 2.5) == 6600
+    assert m.peak_between(0.5, 2.5, apps=True) == 4700
