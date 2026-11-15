@@ -81,6 +81,8 @@ vllm serve Qwen/Qwen3-1.7B-GPTQ-Int8 \
   --reasoning-parser qwen3
 ```
 
+`greedy-json` 配置需要 vLLM 支持结构化输出（`response_format` 的 `json_schema` 类型）；如果请求报参数错误，升级 vLLM 或改用 `greedy`。
+
 如果启动时报 KV cache 放不下，可以加 `--kv-cache-dtype fp8` 把推理缓存减半（需要显卡和 vLLM 版本支持），或者只跑非思考模式时把 `--max-model-len` 改成 4096。旧版 vLLM 的推理解析器写法是 `--enable-reasoning --reasoning-parser deepseek_r1`。
 
 **可选，量化对照：Qwen3-1.7B，原精度**（只跑非思考模式，预估约 4.5GB）
@@ -108,7 +110,13 @@ curl http://localhost:8000/v1/models
    boltcheck run --model qwen3-4b-instruct-2507-int4 --profile greedy --group joint --limit 5 --note 试跑
    ```
 
-   打开 `runs/<运行 ID>/outputs.jsonl` 看 `text` 字段。如果大量出现重复内容或长度截断，换用 `--profile sampled`。
+   打开 `runs/<运行 ID>/outputs.jsonl` 看 `text` 字段。如果大量出现重复内容或长度截断，换用 `--profile sampled`；如果内容基本对但 JSON 写坏（报告里"宽松提取"的逐格清单准确率明显高于严格口径），换用 `--profile greedy-json` 打开结构化输出。
+
+   想单独检查判断这一步，可以先跑第 4 组（直接给标准矩阵，不受复原影响）：
+
+   ```bash
+   boltcheck run --model qwen3-4b-instruct-2507-int4 --profile greedy --group judge --limit 5 --note 试跑
+   ```
 
 2. 主测模型跑四组（第 2、3、4、5 组）：
 
