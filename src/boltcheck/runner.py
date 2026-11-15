@@ -22,7 +22,7 @@ from pathlib import Path
 
 from boltcheck import PLAN_VERSION, __version__
 from boltcheck.backends import BaselineBackend, NoisyBackend, build_openai_backend
-from boltcheck.dataset import dataset_sha256, load_config, load_dataset
+from boltcheck.dataset import dataset_sha256, load_config, load_dataset, select_samples
 from boltcheck.parse import parse_output
 from boltcheck.prompts import GROUPS, PROMPT_VERSION, build_judge_prompt, build_prompt
 
@@ -195,6 +195,7 @@ def run_experiment(
     limit: int | None = None,
     repeats: int | None = None,
     resume_dir: str | None = None,
+    ids: list[str] | None = None,
     gpu_monitor: bool = False,
     workers: int = 1,
     note: str = "",
@@ -202,9 +203,7 @@ def run_experiment(
 ) -> Path:
     if group not in GROUPS:
         raise ValueError(f"未知的对照组: {group}（可选 {', '.join(GROUPS)}）")
-    samples = load_dataset(dataset_dir)
-    if limit:
-        samples = samples[:limit]
+    samples = select_samples(load_dataset(dataset_dir), limit, ids)
     n_repeats = repeats or info.get("repeats", 1)
 
     if resume_dir:
@@ -227,6 +226,7 @@ def run_experiment(
             **info,
             "repeats": n_repeats,
             "limit": limit,
+            "ids": list(ids) if ids else None,
             "dataset": {
                 "path": str(dataset_dir),
                 "version": manifest.get("dataset_version"),
@@ -305,3 +305,57 @@ def run_experiment(
         if monitor:
             monitor.stop()
     return run_dir
+
+
+def load_pilot(path: str | Path) -> dict:
+    """读取自动试跑清单（configs/pilot.toml）并检查字段。"""
+    cfg = load_config(path)
+    runs = cfg.get("runs") or []
+    if not runs:
+        raise ValueError(f"{path} 中没有 [[runs]]")
+    for i, r in enumerate(runs, start=1):
+        if r.get("group") not in GROUPS:
+            raise ValueError(f"{path} 第 {i} 项的 group 无效：{r.get('group')!r}（可选 {', '.join(GROUPS)}）")
+        backend = r.get("backend", cfg.get("backend", "openai"))
+        if backend == "openai" and not ((r.get("model") or cfg.get("model")) and r.get("profile")):
+            raise ValueError(f"{path} 第 {i} 项缺少 model 或 profile")
+    return cfg
+
+
+def run_pilot(
+    config_path: str | Path,
+    models_config: str = "configs/models.toml",
+    data: str = "data/v1.1",
+    out_root: str = "runs",
+    gpu_monitor: bool = False,
+    skip_check: bool = False,
+    log=print,
+) -> list[dict]:
+    """按清单依次运行并评测；某一项出错时记下错误、继续下一项。返回每项的结果摘要。"""
+    from boltcheck.evaluate import evaluate_run
+
+    cfg = load_pilot(config_path)
+    ids, base_note = cfg.get("ids"), cfg.get("note", "自动试跑")
+    results = []
+    for i, r in enumerate(cfg["runs"], start=1):
+        backend_name = r.get("backend", cfg.get("backend", "openai"))
+        model, profile, group = r.get("model", cfg.get("model")), r.get("profile"), r["group"]
+        label = f"[{i}/{len(cfg['runs'])}] {group} · {model or backend_name} · {profile or '-'}"
+        log(f"{label}：{r.get('purpose', '')}")
+        res = {"index": i, "group": group, "model": model, "profile": profile, "purpose": r.get("purpose", "")}
+        try:
+            backend, info = resolve_backend(backend_name, models_config, model, profile)
+            if hasattr(backend, "check") and not skip_check:
+                backend.check()
+            note = f"{base_note}：{r['purpose']}" if r.get("purpose") else base_note
+            run_dir = run_experiment(
+                data, group, backend, info, out_root=out_root, limit=r.get("limit", cfg.get("limit")),
+                ids=r.get("ids", ids), gpu_monitor=gpu_monitor, note=note, log=log,
+            )
+            evaluate_run(run_dir)
+            res.update(run_dir=str(run_dir), log_row=(run_dir / "log_row.md").read_text(encoding="utf-8").strip())
+        except Exception as e:  # noqa: BLE001 —— 一项失败（如服务不支持结构化输出）不影响其余各项
+            res["error"] = f"{type(e).__name__}: {e}"
+            log(f"{label} 失败：{res['error']}")
+        results.append(res)
+    return results

@@ -264,3 +264,17 @@ def verify(data_dir: str | Path) -> list[str]:
             problems.append(f"{r['id']} 的标签与规则程序不一致")
     problems += check_quotas(records, manifest["config"])
     return problems
+
+
+def select_samples(samples: list[dict], limit: int | None = None, ids: list[str] | None = None) -> list[dict]:
+    """按样本 ID（保持数据集中的顺序）和/或前 N 条挑选样本；运行、评测、查看器共用，保证三者一致。"""
+    if ids:
+        known = {s["id"] for s in samples}
+        missing = [i for i in ids if i not in known]
+        if missing:
+            raise ValueError(f"数据集中没有这些样本：{', '.join(missing)}")
+        wanted = set(ids)
+        samples = [s for s in samples if s["id"] in wanted]
+    if limit:
+        samples = samples[:limit]
+    return samples

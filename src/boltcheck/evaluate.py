@@ -7,11 +7,11 @@ import statistics
 from collections import defaultdict
 from pathlib import Path
 
-from boltcheck.dataset import load_dataset
+from boltcheck.dataset import load_dataset, select_samples
 from boltcheck.grid import transpose
 from boltcheck.parse import Parsed, parse_output
 from boltcheck.grid import coord_of
-from boltcheck.rules import block_maxima, judge_matrix
+from boltcheck.rules import BLOCK_KEYS, block_maxima, block_slices, judge_matrix
 
 MATRIX_GROUPS = ("joint", "restore", "pipeline")
 VERDICT_GROUPS = ("joint", "judge", "pipeline")
@@ -36,6 +36,8 @@ METRIC_NAMES = {
     "self_consistency_rate": "自洽率",
     "block_max_acc": "区块最大数准确率",
     "block_max_whole_acc": "区块最大数全对比例",
+    "block_copy_acc": "区块抄写准确率",
+    "block_max_copy_consistent_rate": "区块最大数与所抄区块一致的比例",
     "layer_label_acc": "层级标注准确率",
     "layer_label_whole_acc": "层级标注全对比例",
     "acc_when_matrix_ok": "复原正确时的判断准确率",
@@ -86,7 +88,7 @@ def parse_record(out: dict | None, group: str) -> Parsed:
         obj=p2.obj, matrix=p1.matrix, matrix_shape_ok=p1.matrix_shape_ok, matrix_valid=p1.matrix_valid, cells=p1.cells,
         cells_lenient=p1.cells_lenient, cells_order_ok=p1.cells_order_ok,
         verdict=p2.verdict, verdict_valid=p2.verdict_valid, first_step=p2.first_step, first_coord=p2.first_coord,
-        step_layers=p2.step_layers, block_max=p2.block_max,
+        step_layers=p2.step_layers, block_max=p2.block_max, blocks=p2.blocks,
         format_valid=p1.format_valid and p2.format_valid,
         errors=[f"复原：{e}" for e in p1.errors] + [f"判断：{e}" for e in p2.errors],
     )
@@ -134,12 +136,21 @@ def score_row(sample: dict, out: dict | None, group: str) -> dict:
         row["verdict_ok"] = row["verdict"] == sample["verdict"]
         row["conclusion_ok"] = _conclusion_ok(row["verdict"], p.first_step, sample["verdict"], sample["first_violation_step"])
         row["coord_ok"] = row["verdict"] == "不合规" and p.first_coord == sample["first_violation_coordinate"]
-        # 层级标注：与"模型所判断的那张矩阵"推出的每步层级比较——第 4 组是标准矩阵，第 2、5 组是模型自己复原的矩阵
+        # 区块类指标与"模型所判断的那张矩阵"比较——第 4 组是标准矩阵，第 2、5 组是模型自己复原的矩阵。
+        # 代码 0.8.0 起只要求该矩阵是 8×8 整数（区块最大数对任意整数矩阵都有定义），不再要求恰好包含 1～64，
+        # 以便在复原不完全正确时也能看出判断阶段是否真的读了矩阵
+        ref_shape = truth_m if group == "judge" else (p.matrix if p.matrix_shape_ok else None)
         ref = truth_m if group == "judge" else (p.matrix if p.matrix_valid else None)
-        if ref is not None and p.block_max is not None:
-            ref_max = block_maxima(ref)
+        if ref_shape is not None and p.block_max is not None:
+            ref_max = block_maxima(ref_shape)
             row["block_acc"] = sum(a == b for a, b in zip(p.block_max, ref_max)) / 3
             row["block_whole_ok"] = p.block_max == ref_max
+        if ref_shape is not None and p.blocks is not None:  # 提示词 v1.5：抄写的 56 个数是否与矩阵一致
+            want = block_slices(ref_shape)
+            pairs = [(a, b) for k in BLOCK_KEYS for ra, rb in zip(p.blocks[k], want[k]) for a, b in zip(ra, rb)]
+            row["block_copy_acc"] = sum(a == b for a, b in pairs) / len(pairs)
+        if p.blocks is not None and p.block_max is not None:  # 写出的最大数是否来自自己抄的区块（区分抄错与照搬"应有值"）
+            row["block_max_copy_consistent"] = p.block_max == [max(max(r) for r in p.blocks[k]) for k in BLOCK_KEYS]
         if ref is not None and p.step_layers is not None:
             ref_layers = judge_matrix(ref).layers
             got = p.step_layers or []
@@ -188,6 +199,11 @@ def compute_metrics(rows: list[dict], group: str) -> dict:
         if any("block_acc" in r for r in rows):
             m["block_max_acc"] = _mean([r["block_acc"] for r in rows if "block_acc" in r])
             m["block_max_whole_acc"] = _mean([r["block_whole_ok"] for r in rows if "block_whole_ok" in r])
+        if any("block_copy_acc" in r for r in rows):
+            m["block_copy_acc"] = _mean([r["block_copy_acc"] for r in rows if "block_copy_acc" in r])
+        if any("block_max_copy_consistent" in r for r in rows):
+            m["block_max_copy_consistent_rate"] = _mean(
+                [r["block_max_copy_consistent"] for r in rows if "block_max_copy_consistent" in r])
         if any("layer_acc" in r for r in rows):
             m["layer_label_acc"] = _mean([r["layer_acc"] for r in rows if "layer_acc" in r])
             m["layer_label_whole_acc"] = _mean([r["layer_whole_ok"] for r in rows if "layer_whole_ok" in r])
@@ -243,9 +259,7 @@ def evaluate_run(run_dir: str | Path, write: bool = True) -> dict:
     run_dir = Path(run_dir)
     meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
     group = meta["group"]
-    samples = load_dataset(meta["dataset"]["path"])
-    if meta.get("limit"):
-        samples = samples[: meta["limit"]]
+    samples = select_samples(load_dataset(meta["dataset"]["path"]), meta.get("limit"), meta.get("ids"))
     outputs: dict = {}
     out_path = run_dir / "outputs.jsonl"
     if out_path.exists():

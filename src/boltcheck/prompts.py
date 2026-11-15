@@ -13,13 +13,18 @@ v1.4 相对 v1.3（依据提示词 v1.3 的同一设置 5 条试跑：逐格清�
 2 条按输入顺序而非格子顺序列出，排成 order_matrix 的一步也不稳定）：
 - 复原：在提示词里给出 64 个格子的填空模板（花括号、按格子顺序、每行一排），模型只把"?"换成步数；
 - 不再要求模型写 order_matrix，由程序按坐标把 cells 排成 8×8 步骤矩阵（方案 A，只排版、不做判断）。
+
+v1.5 相对 v1.4（依据提示词 v1.4 的两次同设置 5 条试跑：进入第二阶段的 6 次判断全部写出 block_max = [4, 16, 36]、
+判为合规、理由逐字相同，其中 3 次与所判断矩阵的实际最大数不符，包括 1 条真实不合规的样本）：
+- 判断：先从步骤矩阵中按行原样抄出三个区块（blocks：center2 / center4 / center6），再在抄出的区块里找最大数写 block_max，
+  最后下结论；写明 M1～M3 必须是区块里实际出现的数。复原部分不变。
 """
 
 from __future__ import annotations
 
 from typing import Sequence
 
-PROMPT_VERSION = "v1.4"
+PROMPT_VERSION = "v1.5"
 
 GROUPS = {
     "joint": "第 2 组：联合任务（还原矩阵 + 合规判断）",
@@ -48,19 +53,24 @@ RULES = (
     "3. 同一层内的操作顺序不限。\n"
     "4. 如果某一步操作时，还有比它更内层的螺栓没有操作，这一步就是违规步。\n"
     "检查方法（在步骤矩阵上按区块检查）：\n"
-    "（1）分别找出中心 2×2、中间 4×4、中间 6×6 三个区块里最大的数，记为 M1、M2、M3。\n"
-    "（2）若 M1 = 4、M2 = 16、M3 = 36，说明每一层都在外层之前完成，合规。\n"
-    "（3）否则，对每个最大数超出的区块（M1 > 4、M2 > 16 或 M3 > 36），区块外面所有比该区块最大数小的数都是违规步。\n"
+    "（1）先从步骤矩阵中原样抄出三个区块，每个区块按行写成二维数组：\n"
+    "    center2：第 4～5 行，每行只取第 4～5 个数（2 行 × 2 个）；\n"
+    "    center4：第 3～6 行，每行只取第 3～6 个数（4 行 × 4 个）；\n"
+    "    center6：第 2～7 行，每行去掉第一个和最后一个数（6 行 × 6 个）。\n"
+    "（2）在你抄出的 center2、center4、center6 里分别找出最大的数，记为 M1、M2、M3；它们必须是区块里实际出现的数。\n"
+    "（3）三个区块分别有 4、16、36 颗螺栓。只有当 M1、M2、M3 恰好依次等于 4、16、36 时，每一层才都在外层之前完成，合规。\n"
+    "（4）否则，对每个最大数超出螺栓数的区块，区块外面所有比该区块最大数小的数都是违规步。\n"
     "    所有违规步中最小的那个数就是首次违规步。"
 )
 
 VERDICT_FIELDS = (
-    "block_max：[M1, M2, M3]，三个整数；\n"
+    "blocks：{\"center2\": 2 行 × 2 个数, \"center4\": 4 行 × 4 个数, \"center6\": 6 行 × 6 个数}，按检查方法（1）从步骤矩阵原样抄出；\n"
+    "block_max：[M1, M2, M3]，分别是你抄出的 center2、center4、center6 里最大的数；\n"
     "verdict：合规、不合规或无法判断，三选一；\n"
     "first_violation_step：首次违规的步骤（整数），合规时为 null；\n"
     "first_violation_coordinate：首次违规步所在格子的坐标，第 r 行第 c 列的坐标是 (10c, 10r)，用 [x, y] 数组表示，合规时为 null；\n"
     "reason：一句话说明判断依据，不超过 80 字。\n"
-    "字段请按以上顺序输出：先写 block_max，再写结论。"
+    "字段请按以上顺序输出：先抄 blocks，再写 block_max，最后下结论。"
 )
 
 def cells_template() -> str:
@@ -116,7 +126,18 @@ def response_schema(group: str) -> dict:
         "required": [f"({10 * c},{10 * r})" for r in range(1, 9) for c in range(1, 9)],
         "additionalProperties": False,
     }
+    def square(n: int) -> dict:
+        row = {"type": "array", "items": {"type": "integer"}, "minItems": n, "maxItems": n}
+        return {"type": "array", "items": row, "minItems": n, "maxItems": n}
+
+    blocks = {
+        "type": "object",
+        "properties": {"center2": square(2), "center4": square(4), "center6": square(6)},
+        "required": ["center2", "center4", "center6"],
+        "additionalProperties": False,
+    }
     verdict = {
+        "blocks": blocks,
         "block_max": {"type": "array", "items": {"type": "integer"}, "minItems": 3, "maxItems": 3},
         "verdict": {"type": "string", "enum": ["合规", "不合规", "无法判断"]},
         "first_violation_step": {"type": ["integer", "null"]},
