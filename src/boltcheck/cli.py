@@ -3,6 +3,8 @@
   generate     按配置生成数据集
   verify-data  校验数据集可复现、标签正确、配额满足
   show-prompt  打印某条样本在某组下的提示词
+  show-sample  在终端把某条样本展开成 8×8 表格
+  view         生成网页查看器（数据集，或某次运行的标准答案与模型复原对比）
   run          调用模型跑一组对照，结束后自动评测
   evaluate     重新评测一个运行目录
 """
@@ -59,6 +61,30 @@ def _cmd_show_prompt(a) -> int:
     return 0
 
 
+def _cmd_show_sample(a) -> int:
+    from boltcheck.dataset import load_dataset
+    from boltcheck.viewer import describe_sample
+
+    samples = load_dataset(a.data)
+    picked = [s for s in samples if s["id"] in a.ids] if a.ids else samples[:1]
+    if not picked:
+        print(f"找不到样本 {' '.join(a.ids)}")
+        return 1
+    print("\n\n".join(describe_sample(s) for s in picked))
+    return 0
+
+
+def _cmd_view(a) -> int:
+    from boltcheck.viewer import dataset_view_data, run_view_data, write_view
+
+    if a.run:
+        out = write_view(run_view_data(a.run), a.out or Path(a.run) / "view.html")
+    else:
+        out = write_view(dataset_view_data(a.data, a.ids), a.out or Path(a.data) / "view.html")
+    print(f"已生成 {out}，用浏览器打开即可（不需要联网）。")
+    return 0
+
+
 def _cmd_run(a) -> int:
     from boltcheck.evaluate import evaluate_run
     from boltcheck.runner import resolve_backend, run_experiment
@@ -86,6 +112,7 @@ def _cmd_run(a) -> int:
     print((run_dir / "report.md").read_text(encoding="utf-8"))
     print("实验日志行（正式实验请粘贴到 docs/experiment-log.md）：")
     print((run_dir / "log_row.md").read_text(encoding="utf-8"))
+    print(f"逐条查看标准答案与模型复原：用浏览器打开 {run_dir / 'view.html'}")
     return 0 if metrics["n_outputs_found"] else 1
 
 
@@ -119,6 +146,18 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--group", default="joint", choices=["joint", "restore", "judge"])
     s.add_argument("--id", help="样本 ID，默认第一条")
     s.set_defaults(func=_cmd_show_prompt)
+
+    ss = sub.add_parser("show-sample", help="在终端把样本展开成 8×8 表格")
+    ss.add_argument("ids", nargs="*", help="样本 ID，可给多个；默认第一条")
+    ss.add_argument("--data", default="data/v1.1")
+    ss.set_defaults(func=_cmd_show_sample)
+
+    vw = sub.add_parser("view", help="生成网页查看器")
+    vw.add_argument("--data", default="data/v1.1", help="数据集目录")
+    vw.add_argument("--run", help="运行目录；给出时生成标准答案与模型复原的对比视图")
+    vw.add_argument("--ids", nargs="*", help="只包含这些样本")
+    vw.add_argument("--out", help="输出文件，默认 <数据集或运行目录>/view.html")
+    vw.set_defaults(func=_cmd_view)
 
     r = sub.add_parser("run", help="跑一组对照并评测")
     r.add_argument("--group", choices=["joint", "restore", "judge"], help="joint=第2组 restore=第3组 judge=第4组")

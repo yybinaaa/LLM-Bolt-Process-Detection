@@ -232,6 +232,9 @@ def evaluate_run(run_dir: str | Path, write: bool = True) -> dict:
         (run_dir / "metrics.json").write_text(json.dumps(metrics, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         (run_dir / "report.md").write_text(render_report(meta, metrics), encoding="utf-8")
         (run_dir / "log_row.md").write_text(render_log_row(meta, metrics) + "\n", encoding="utf-8")
+        from boltcheck.viewer import run_view_data, write_view
+
+        write_view(run_view_data(run_dir), run_dir / "view.html")
     return metrics
 
 
