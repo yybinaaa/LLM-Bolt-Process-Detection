@@ -174,6 +174,6 @@ boltcheck evaluate runs/<运行 ID>
 
 - **连接失败**：先用 `curl` 确认服务已启动、端口正确。本地地址（localhost、127.0.0.1）会自动绕过系统代理。
 - **显存不够**：调小 `--max-model-len`，或加 `--kv-cache-dtype fp8`。注意 `--gpu-memory-utilization` 是占整张卡的比例，桌面程序占用的显存也要算进去。
-- **显存读数偏高**：vLLM 启动时会按 `--gpu-memory-utilization` 预先占满给它的显存，`--gpu-monitor` 记录的是整张卡的实际占用（含其他程序），主要用于确认服务没有超过 5GB，不等于模型的最小需求。
+- **显存读数偏高**：报告里有两个读数："整卡"包含桌面等其他程序，"计算进程"通常就是 vLLM 本身（Windows 上可能读不到，这时请在启动 vLLM 前后各看一次 `nvidia-smi`，用差值作为服务占用，并写进日志备注）。vLLM 启动时会按 `--gpu-memory-utilization` 预先占满给它的显存，`--gpu-monitor` 记录的是整张卡的实际占用（含其他程序），主要用于确认服务没有超过 5GB，不等于模型的最小需求。
 - **用 Ollama、llama.cpp 或 LM Studio 代替 vLLM**：如果最终部署在 3～5GB 的小卡上，这类运行方式通常比 vLLM 更省显存。它们都提供 OpenAI 兼容接口，在 `configs/models.toml` 里新增一个模型条目，把 `base_url` 和 `model` 改成对应的地址和名称即可。部分采样参数（如 `top_k`、`seed`）可能不生效，结果需在备注中注明。
 - **用远程 API 做上限参考**：在 `configs/models.toml` 的 `api-reference` 里填好地址和模型名，设置环境变量 `LLM_API_KEY` 后运行 `--model api-reference --profile greedy`。

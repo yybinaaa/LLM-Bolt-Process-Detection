@@ -5,8 +5,9 @@
 - 提交号后带 `*` 表示运行时工作区有未提交改动，结果不作为正式结论。
 - 多次重复的运行，指标为均值 ± 标准差（百分点）。
 - 第 1 组（程序规则基线）是流水线自检，所有准确率都应为 100%。
+- 不同提示词版本的结果不能直接比较；"提示词"列记录运行时的提示词版本（`PROMPT_VERSION`）。
 - 试跑必须在备注中注明样本限制，以下标注为“试跑”的记录仅用于排查流程与输出，不作为正式实验结论。
 
-| 日期 | 运行 ID | 提交 | 数据 | 组 | 模型 / 配置 | 重复 | 格式有效 | 判断准确 | 检出率 | 误报率 | 首违步 | 整矩阵 | 自洽 | 备注 |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 2026-11-15 | [20261115-175155_pipeline_qwen3-4b-instruct-2507-int4_greedy](experiments/20261115-175155_pipeline_qwen3-4b-instruct-2507-int4_greedy.md) | 8c866a3 | v1.1 | pipeline | qwen3-4b-instruct-2507-int4 / greedy | 1 | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | — | 试跑（limit=5），非正式结果；[完整归档](https://github.com/yybinaaa/LLM-Bolt-Process-Detection/releases/tag/exp-20261115-175155) |
+| 日期 | 运行 ID | 提交 | 数据 | 提示词 | 组 | 模型 / 配置 | 重复 | 格式有效 | 判断准确 | 检出率 | 误报率 | 首违步 | 整矩阵 | 自洽 | 备注 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-15 | [20261115-175155_pipeline_qwen3-4b-instruct-2507-int4_greedy](experiments/20261115-175155_pipeline_qwen3-4b-instruct-2507-int4_greedy.md) | 8c866a3 | v1.1 | v1.1 | pipeline | qwen3-4b-instruct-2507-int4 / greedy | 1 | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% | — | 试跑（limit=5），非正式结果；[完整归档](https://github.com/yybinaaa/LLM-Bolt-Process-Detection/releases/tag/exp-20261115-175155) |
