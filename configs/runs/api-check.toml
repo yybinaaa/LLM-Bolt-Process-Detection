@@ -1,0 +1,30 @@
+# 大模型参考·小样本确认（方案 v1.12）：先用固定的 8 条试跑样本确认接口、格式与费用，再跑全量。
+#   boltcheck pilot --config configs/runs/api-check.toml
+# 只设置了部分密钥时，没有密钥的模型会报错跳过，其余照常运行。
+
+note = "大模型参考·小样本"
+ids = ["v1.1-0001", "v1.1-0002", "v1.1-0003", "v1.1-0004", "v1.1-0005", "v1.1-0006", "v1.1-0008", "v1.1-0019"]
+
+[[runs]]
+group = "pipeline"
+model = "claude-opus"
+profile = "api"
+purpose = "Claude Opus 第5组"
+
+[[runs]]
+group = "pipeline"
+model = "gpt"
+profile = "api"
+purpose = "GPT 第5组"
+
+[[runs]]
+group = "pipeline"
+model = "gemini"
+profile = "api"
+purpose = "Gemini 第5组"
+
+[[runs]]
+group = "pipeline"
+model = "deepseek"
+profile = "api"
+purpose = "DeepSeek 第5组"

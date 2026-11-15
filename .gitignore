@@ -1,5 +1,5 @@
 # 实验运行输出（正式结果登记到 docs/experiment-log.md）
-runs/
+/runs/
 
 # 查看器网页（由 boltcheck view 生成）
 data/*/view.html

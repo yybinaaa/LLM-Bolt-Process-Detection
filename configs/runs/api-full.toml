@@ -1,0 +1,53 @@
+# 大模型参考·全量（方案 v1.12）：与 configs/runs/full-qwen3-4b.toml 相同的组和样本（全部 200 条），换成大模型。
+#   boltcheck pilot --config configs/runs/api-full.toml
+# 费用较高时可只保留部分模型（删掉对应的 [[runs]]，或只设置部分密钥）。
+
+note = "大模型参考·全量"
+
+[[runs]]
+group = "pipeline"
+model = "claude-opus"
+profile = "api"
+purpose = "Claude Opus 第5组"
+
+[[runs]]
+group = "judge"
+model = "claude-opus"
+profile = "api"
+purpose = "Claude Opus 第4组"
+
+[[runs]]
+group = "pipeline"
+model = "gpt"
+profile = "api"
+purpose = "GPT 第5组"
+
+[[runs]]
+group = "judge"
+model = "gpt"
+profile = "api"
+purpose = "GPT 第4组"
+
+[[runs]]
+group = "pipeline"
+model = "gemini"
+profile = "api"
+purpose = "Gemini 第5组"
+
+[[runs]]
+group = "judge"
+model = "gemini"
+profile = "api"
+purpose = "Gemini 第4组"
+
+[[runs]]
+group = "pipeline"
+model = "deepseek"
+profile = "api"
+purpose = "DeepSeek 第5组"
+
+[[runs]]
+group = "judge"
+model = "deepseek"
+profile = "api"
+purpose = "DeepSeek 第4组"
