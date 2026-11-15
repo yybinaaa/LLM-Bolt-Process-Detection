@@ -8,8 +8,8 @@
 
 ## 文档
 
-- [实验方案](docs/experiment-plan.md)：当前版本 v1.0，修改历史见 Git 提交记录
-- Word 版本：[v1.0](docs/experiment-plan-v1.0.docx)
+- [实验方案](docs/experiment-plan.md)：当前版本 v1.1，修改历史见 Git 提交记录
+- Word 版本：[v1.1](docs/experiment-plan-v1.1.docx)（当前）、[v1.0](docs/experiment-plan-v1.0.docx)（原稿）
 - [变更日志](CHANGELOG.md)
 
 ## 仓库结构
