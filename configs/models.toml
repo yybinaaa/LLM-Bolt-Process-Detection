@@ -42,6 +42,14 @@ presence_penalty = 0.0
 max_tokens = 2048
 chat_template_kwargs = { enable_thinking = false }
 
+[profiles.api]
+# 大模型能力上限参考（方案 v1.12 第七节）：不指定温度，用各家默认值。
+# 当前的旗舰模型大多是推理模型，Claude 4.7 起和部分推理模型不接受温度 0（会返回 400），因此各家统一不设。
+# max_tokens 含思考过程，取得较大以免截断；按实际输出计费，不会因上限大而多收费。
+repeats = 1
+[profiles.api.params]
+max_tokens = 16384
+
 [profiles.thinking]
 # 思考模式：Qwen3 模型卡推荐参数（temperature 0.6、top_p 0.95、top_k 20，不用贪心解码），跑 3 次。
 repeats = 3
@@ -98,12 +106,46 @@ api_key_env = ""
 timeout_s = 600
 profiles = ["greedy", "greedy-json", "sampled"]
 
-[models.api-reference]
-# 能力上限参考（型号待定）。填好 base_url 和 model，并设置环境变量 LLM_API_KEY。
-base_url = "https://api.example.com/v1"
-model = "待定"
-api_key_env = "LLM_API_KEY"
+# ---------- 大模型能力上限参考（远程 API，方案 v1.12） ----------
+# 都走各家的 OpenAI 兼容接口，密钥放在环境变量里（不要写进本文件）。模型名以各家文档为准，可直接改 model。
+# 远程 API 不认识 vLLM 的扩展字段，发送前去掉；seed 各家支持不一，也去掉（温度用默认值，seed 意义不大）。
+
+[models.claude-opus]
+# Anthropic，OpenAI SDK 兼容层：https://platform.claude.com/docs/en/cli-sdks-libraries/libraries/openai-sdk
+# Claude 4.7 起的模型不接受小于 1 的 temperature 和 top_p，api 配置已不设；Claude 5 系列默认开启自适应思考。
+base_url = "https://api.anthropic.com/v1"
+model = "claude-opus-5-5"
+api_key_env = "ANTHROPIC_API_KEY"
 timeout_s = 900
-profiles = ["greedy", "sampled"]
-# 远程 API 通常不认识 vLLM 的扩展字段，发送前去掉
-drop_params = ["chat_template_kwargs", "top_k", "min_p"]
+profiles = ["api"]
+drop_params = ["chat_template_kwargs", "top_k", "min_p", "seed"]
+
+[models.gpt]
+# OpenAI：https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create
+# 新模型用 max_completion_tokens（含推理 token）。文档示例为 gpt-6-astra，也可换成 gpt-6.1-sol 等。
+base_url = "https://api.openai.com/v1"
+model = "gpt-6-astra"
+api_key_env = "OPENAI_API_KEY"
+timeout_s = 900
+profiles = ["api"]
+drop_params = ["chat_template_kwargs", "top_k", "min_p", "seed"]
+rename_params = { max_tokens = "max_completion_tokens" }
+
+[models.gemini]
+# Google，OpenAI 兼容接口：https://ai.google.dev/gemini-api/docs/openai
+# Gemini 3 系列的思考无法关闭。gemini-3.1-pro-preview 为模型列表中的 Pro 型号；也可换成文档首页的新旗舰。
+base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
+model = "gemini-3.1-pro-preview"
+api_key_env = "GEMINI_API_KEY"
+timeout_s = 900
+profiles = ["api"]
+drop_params = ["chat_template_kwargs", "top_k", "min_p", "seed"]
+
+[models.deepseek]
+# DeepSeek（OpenAI 兼容）：https://api-docs.deepseek.com/ ；旧名 deepseek-chat / deepseek-reasoner 已停用。
+base_url = "https://api.deepseek.com"
+model = "deepseek-v4-pro"
+api_key_env = "DEEPSEEK_API_KEY"
+timeout_s = 900
+profiles = ["api"]
+drop_params = ["chat_template_kwargs", "top_k", "min_p", "seed"]

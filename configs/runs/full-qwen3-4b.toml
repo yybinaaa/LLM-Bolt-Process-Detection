@@ -1,0 +1,17 @@
+# 全量基线（方案 v1.12）：Qwen3-4B INT4 在 v1.1 全部 200 条样本上（合规、不合规各 100 条），提示词冻结在 v1.6。
+#   boltcheck pilot --config configs/runs/full-qwen3-4b.toml --gpu-monitor
+# 预计耗时：第 5 组约 1～2 小时（每条两次调用），第 4 组约 20～30 分钟。中断后可用 boltcheck run --resume <运行目录> 续跑。
+
+model = "qwen3-4b-instruct-2507-int4"
+note = "全量基线"
+# 不写 ids / limit，即全部 200 条
+
+[[runs]]
+group = "pipeline"
+profile = "greedy"
+purpose = "第5组：先复原再按自己复原的表格判断——复原效果与基于复原的识别效果"
+
+[[runs]]
+group = "judge"
+profile = "greedy"
+purpose = "第4组：直接给正确表格判断——判断能力本身，与第5组之差为复原误差造成的损失"

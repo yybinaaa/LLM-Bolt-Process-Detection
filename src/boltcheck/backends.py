@@ -144,6 +144,7 @@ class OpenAICompatBackend:
         # 本地 vLLM 不走系统代理，避免设置了 HTTP_PROXY 时请求被转发出去
         local = host in ("localhost", "127.0.0.1", "0.0.0.0", "::1")
         self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({})) if local else urllib.request.build_opener()
+        self.local = local
         self.model = model
         self.params = params
         self.api_key = api_key
@@ -166,10 +167,15 @@ class OpenAICompatBackend:
         try:
             with self._opener.open(req, timeout=10) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError:
+            if not self.local:
+                return  # 远程 API 的 /models 鉴权方式各家不同；能连上就行，问题留给正式请求暴露
+            raise RuntimeError(f"{url} 返回错误，请检查模型服务。")
         except (urllib.error.URLError, TimeoutError, OSError, ValueError) as e:
             raise RuntimeError(f"无法连接 {url}（{e}）。请先启动模型服务，或检查 configs/models.toml 中的 base_url。") from e
         names = [m.get("id") for m in data.get("data", []) if isinstance(m, dict)]
-        if names and self.model not in names:
+        # 远程 API 的模型列表写法不一（如 Gemini 返回 "models/<名称>"），也可能不列出全部可用模型，只检查连通性
+        if self.local and names and self.model not in names:
             raise RuntimeError(f"服务上没有模型 {self.model!r}，可用的是 {names}。请让 --served-model-name 与配置一致。")
 
     def generate(self, prompt: str, sample: dict, group: str, repeat: int) -> Generation:
@@ -215,8 +221,12 @@ class OpenAICompatBackend:
 def build_openai_backend(model_cfg: dict, profile: dict) -> OpenAICompatBackend:
     params = {**profile.get("params", {}), **model_cfg.get("params_override", {})}
     structured = bool(profile.get("structured_output", False))
-    for key in model_cfg.get("drop_params", []):
+    drop = set(model_cfg.get("drop_params", []))
+    for key in drop:
         params.pop(key, None)
+    for old, new in model_cfg.get("rename_params", {}).items():  # 如 OpenAI 新模型要求 max_completion_tokens
+        if old in params:
+            params[new] = params.pop(old)
     key_env = model_cfg.get("api_key_env") or ""
     api_key = os.environ.get(key_env) if key_env else None
     if key_env and not api_key:
@@ -228,6 +238,6 @@ def build_openai_backend(model_cfg: dict, profile: dict) -> OpenAICompatBackend:
         api_key=api_key,
         timeout_s=model_cfg.get("timeout_s", 600),
         retries=model_cfg.get("retries", 3),
-        seed=profile.get("seed"),
+        seed=None if "seed" in drop else profile.get("seed"),
         structured=structured,
     )
