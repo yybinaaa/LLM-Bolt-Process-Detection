@@ -17,6 +17,17 @@ temperature = 0.0
 max_tokens = 2048
 chat_template_kwargs = { enable_thinking = false }
 
+[profiles.greedy-json]
+# 与 greedy 相同，另外打开结构化输出：按调用的组附上 JSON Schema（vLLM response_format json_schema），
+# 保证输出是合法 JSON、cells 正好 64 格、写完即停。只约束格式，不影响内容；需要支持结构化输出的 vLLM 版本。
+repeats = 1
+seed = 1234
+structured_output = true
+[profiles.greedy-json.params]
+temperature = 0.0
+max_tokens = 2048
+chat_template_kwargs = { enable_thinking = false }
+
 [profiles.sampled]
 # 备选：Qwen3 模型卡推荐的非思考采样参数（temperature 0.7、top_p 0.8、top_k 20），跑 3 次。
 # 模型卡建议出现无限重复时加 presence_penalty；本任务要输出大量重复的数字和逗号，默认取 0，可作为消融项。
@@ -55,7 +66,7 @@ hf_repo = "cyankiwi/Qwen3-4B-Instruct-2507-AWQ-4bit"
 quantization = "INT4 AWQ（W4A16，社区量化版）"
 api_key_env = ""
 timeout_s = 600
-profiles = ["greedy", "sampled"]
+profiles = ["greedy", "greedy-json", "sampled"]
 
 [models."phi-4-mini-instruct-int4"]
 # 跨家族对比，预估约 4～4.5GB
@@ -65,7 +76,7 @@ hf_repo = "microsoft/Phi-4-mini-instruct"
 quantization = "INT4 bitsandbytes（vLLM 加载时量化）"
 api_key_env = ""
 timeout_s = 600
-profiles = ["greedy", "sampled"]
+profiles = ["greedy", "greedy-json", "sampled"]
 
 [models."qwen3-1.7b-int8"]
 # 低配档与思考模式对比；同一个服务既能跑非思考（greedy / sampled）也能跑思考（thinking）
@@ -75,7 +86,7 @@ hf_repo = "Qwen/Qwen3-1.7B-GPTQ-Int8"
 quantization = "INT8 GPTQ（官方量化版）"
 api_key_env = ""
 timeout_s = 1200
-profiles = ["greedy", "sampled", "thinking"]
+profiles = ["greedy", "greedy-json", "sampled", "thinking"]
 
 [models."qwen3-1.7b-bf16"]
 # 可选：量化影响对照，与 qwen3-1.7b-int8 比较；只跑非思考模式，预估约 4.5GB
@@ -85,7 +96,7 @@ hf_repo = "Qwen/Qwen3-1.7B"
 quantization = "BF16（原精度）"
 api_key_env = ""
 timeout_s = 600
-profiles = ["greedy", "sampled"]
+profiles = ["greedy", "greedy-json", "sampled"]
 
 [models.api-reference]
 # 能力上限参考（型号待定）。填好 base_url 和 model，并设置环境变量 LLM_API_KEY。

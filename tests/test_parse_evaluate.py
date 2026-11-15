@@ -71,7 +71,7 @@ def test_prompts_contain_no_answers(group):
     p = build_prompt(group, VIOLATING)
     assert "不合规\"" not in p and str(VIOLATING["first_violation_coordinate"]) not in p
     if group != "judge":
-        assert "(45,45)" in p and "第 r 行对应 y = 10r" in p
+        assert "(45,45)" in p and '"(10,10)": ?' in p and '"(80,80)": ?' in p
 
 
 @pytest.mark.parametrize("group", list(GROUPS))
@@ -142,21 +142,40 @@ def test_pipeline_two_stage_calls_and_metrics(tmp_path):
     assert "第 5 组" in data_view
 
 
-def test_prompt_v13_content():
-    from boltcheck.prompts import PROMPT_VERSION, build_judge_prompt
+def test_prompt_v14_content():
+    from boltcheck.prompts import PROMPT_VERSION, build_judge_prompt, cells_template
 
-    assert PROMPT_VERSION == "v1.3"
+    assert PROMPT_VERSION == "v1.4"
     s = VIOLATING
     p = build_prompt("restore", s)
     x, y = s["coords"][0]
-    assert f"({x},{y}) → 第1步" in p and f"({s['coords'][63][0]},{s['coords'][63][1]}) → 第64步" in p
-    assert "本身不是螺栓位置" in p and "抄下它右边的步数" in p
-    assert p.index("cells：") < p.index("order_matrix：")  # 先逐格抄步数，再排成矩阵
+    assert f"({x},{y}) → 第1步" in p and "抄下它右边的步数" in p
+    assert cells_template() in p and "order_matrix" not in p  # 只填 64 格，矩阵由程序排
+    lines = cells_template().splitlines()
+    assert lines[1].strip().startswith('"(10,10)": ?') and lines[8].strip().startswith('"(10,80)": ?')  # 每行一排
+    assert cells_template().count(": ?") == 64
     j = build_judge_prompt(s["order_matrix"])
-    assert "中心 2×2" in j and "M1 = 4、M2 = 16、M3 = 36" in j and "step_layers" not in j
-    assert j.index("block_max：") < j.index("verdict：")  # 先写区块最大数、后下结论
+    assert "中心 2×2" in j and j.index("block_max：") < j.index("verdict：")
     jt = build_prompt("joint", s)
-    assert jt.index("cells：") < jt.index("order_matrix：") < jt.index("block_max：") < jt.index("verdict：")
+    assert jt.index('"(80,80)": ?') < jt.index("block_max：") < jt.index("verdict：")
+
+
+def test_cells_build_matrix_and_lenient_extraction():
+    s = VIOLATING
+    m = s["order_matrix"]
+    cells = {f"({10 * (c + 1)},{10 * (r + 1)})": m[r][c] for r in range(8) for c in range(8)}
+    p = parse_output(json.dumps({"cells": cells}), "restore")
+    assert p.format_valid and p.matrix == m  # 程序按坐标排成矩阵
+    # v1.3 试跑里的写法：cells 用了方括号，JSON 无效；宽松提取仍能统计内容
+    broken = '{"cells": [\n' + ",\n".join(f'  "{k[1:-1]}": {v}' for k, v in cells.items()) + "\n]}"
+    p = parse_output(broken, "restore")
+    assert not p.format_valid and p.cells_lenient and len(p.cells_lenient) == 64
+    row = score_row(s, {"text": broken}, "restore")
+    assert row["cells_acc_lenient"] == 1.0 and row.get("cells_acc", 0.0) == 0.0  # 严格口径按 0 计
+    # 缺格子时给出明确错误
+    del cells["(80,80)"]
+    p = parse_output(json.dumps({"cells": cells}), "restore")
+    assert not p.format_valid and "缺少 1 个格子" in "".join(p.errors)
 
 
 def test_extract_json_keeps_outer_object():

@@ -8,13 +8,18 @@ v1.3 相对 v1.2（依据提示词 v1.2 的同一设置 5 条试跑：复原仍�
   再排成 order_matrix。每写一个坐标就能在输入里找到同一个坐标、抄下后面的步数，不需要数数或心算查找。
 - 判断：不再逐步标层，改为在步骤矩阵上按区块检查：中心 2×2、中间 4×4、中间 6×6 的最大数是否为 4、16、36；
   区块外比区块最大数小的数都是违规步，最小的就是首次违规步。只需输出 3 个数（block_max），与违规定义等价（测试验证）。
+
+v1.4 相对 v1.3（依据提示词 v1.3 的同一设置 5 条试跑：逐格清单内容平均约 97% 正确，但 cells 写成了方括号导致 JSON 无效，
+2 条按输入顺序而非格子顺序列出，排成 order_matrix 的一步也不稳定）：
+- 复原：在提示词里给出 64 个格子的填空模板（花括号、按格子顺序、每行一排），模型只把"?"换成步数；
+- 不再要求模型写 order_matrix，由程序按坐标把 cells 排成 8×8 步骤矩阵（方案 A，只排版、不做判断）。
 """
 
 from __future__ import annotations
 
 from typing import Sequence
 
-PROMPT_VERSION = "v1.3"
+PROMPT_VERSION = "v1.4"
 
 GROUPS = {
     "joint": "第 2 组：联合任务（还原矩阵 + 合规判断）",
@@ -58,11 +63,18 @@ VERDICT_FIELDS = (
     "字段请按以上顺序输出：先写 block_max，再写结论。"
 )
 
-RESTORE_FIELDS = (
-    "cells：按格子顺序列出每个坐标对应的步数，共 64 项。从第 1 行（y = 10）开始，每行从左到右（x = 10, 20, …, 80），"
-    "写法为 \"(x,y)\": 步数。每写一个坐标，就到操作序列里找到同一个坐标，抄下它右边的步数；\n"
-    f"order_matrix：8×8 步骤矩阵，把 cells 里的步数按顺序每 8 个排成一行，共 8 行。{MATRIX_CONVENTION}。"
-    "矩阵里 1～64 每个数恰好出现一次"
+def cells_template() -> str:
+    """64 格填空模板：每行是阵列的一排（y 相同），从左到右 x = 10…80。"""
+    rows = []
+    for r in range(1, 9):
+        rows.append("  " + ", ".join(f'"({10 * c},{10 * r})": ?' for c in range(1, 9)))
+    return '"cells": {\n' + ",\n".join(rows) + "\n}"
+
+
+RESTORE_INSTRUCTION = (
+    "cells：下面模板中每一行是阵列的一排（第 1 行 y = 10，第 8 行 y = 80），每行从左到右 x = 10, 20, …, 80，共 64 个格子。\n"
+    "请保留模板里的坐标和顺序不变，把每个 ? 换成该坐标在操作序列中标注的步数（整数）："
+    "到操作序列里找到同一个坐标，抄下它右边的步数。1～64 每个数恰好出现一次。"
 )
 
 
@@ -94,22 +106,55 @@ def build_judge_prompt(matrix: Sequence[Sequence[int]]) -> str:
     )
 
 
+def response_schema(group: str) -> dict:
+    """结构化输出（vLLM response_format json_schema）用的 JSON Schema：只约束格式，不影响内容。
+    group 取 restore / judge / joint（第 5 组两个阶段分别用 restore 和 judge）。"""
+    cells = {
+        "type": "object",
+        "properties": {f"({10 * c},{10 * r})": {"type": "integer", "minimum": 1, "maximum": 64}
+                       for r in range(1, 9) for c in range(1, 9)},
+        "required": [f"({10 * c},{10 * r})" for r in range(1, 9) for c in range(1, 9)],
+        "additionalProperties": False,
+    }
+    verdict = {
+        "block_max": {"type": "array", "items": {"type": "integer"}, "minItems": 3, "maxItems": 3},
+        "verdict": {"type": "string", "enum": ["合规", "不合规", "无法判断"]},
+        "first_violation_step": {"type": ["integer", "null"]},
+        "first_violation_coordinate": {
+            "anyOf": [{"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2}, {"type": "null"}]
+        },
+        "reason": {"type": "string", "maxLength": 200},
+    }
+    if group == "restore":
+        props = {"cells": cells}
+    elif group == "judge":
+        props = verdict
+    elif group == "joint":
+        props = {"cells": cells, **verdict}
+    else:
+        raise ValueError(f"没有 {group} 的输出结构")
+    return {"type": "object", "properties": props, "required": list(props), "additionalProperties": False}
+
+
 def build_prompt(group: str, sample: dict) -> str:
     if group == "joint":
         return (
             f"{COORD_DESC}\n"
             f"{_sequence_block(sample['coords'])}\n"
             f"{RULES}\n"
+            "cells 填好后就是步骤矩阵：第 r 行第 c 个格子是第 r 行第 c 列，检查时按它读区块。\n"
             "请只输出一个 JSON 对象，依次包含以下字段：\n"
-            f"{RESTORE_FIELDS}；\n"
+            f"{RESTORE_INSTRUCTION}\n"
+            f"{cells_template()}\n"
             f"{VERDICT_FIELDS}"
         )
     if group == "restore":
         return (
             f"{COORD_DESC}\n"
             f"{_sequence_block(sample['coords'])}\n"
-            "请只输出一个 JSON 对象，依次包含两个字段：\n"
-            f"{RESTORE_FIELDS}。"
+            "请只输出一个 JSON 对象，只包含一个字段：\n"
+            f"{RESTORE_INSTRUCTION}\n"
+            "{" + cells_template() + "}"
         )
     if group == "judge":
         return build_judge_prompt(sample["order_matrix"])
