@@ -12,8 +12,9 @@ from boltcheck.grid import transpose
 from boltcheck.parse import Parsed, parse_output
 from boltcheck.rules import judge_matrix
 
-MATRIX_GROUPS = ("joint", "restore")
-VERDICT_GROUPS = ("joint", "judge")
+MATRIX_GROUPS = ("joint", "restore", "pipeline")
+VERDICT_GROUPS = ("joint", "judge", "pipeline")
+SELF_CHECK_GROUPS = ("joint", "pipeline")  # 模型自己输出矩阵和结论的组：可算自洽率与错误归因
 
 METRIC_NAMES = {
     "format_valid_rate": "格式有效率",
@@ -29,6 +30,8 @@ METRIC_NAMES = {
     "first_step_acc": "首次违规步定位准确率",
     "first_coord_acc": "首次违规坐标准确率",
     "self_consistency_rate": "自洽率",
+    "acc_when_matrix_ok": "复原正确时的判断准确率",
+    "acc_when_matrix_wrong": "复原错误时的判断准确率",
 }
 
 ATTRIBUTION_NAMES = {
@@ -57,10 +60,31 @@ def _conclusion_ok(verdict: str | None, step: int | None, truth_verdict: str, tr
     return truth_verdict != "不合规" or step == truth_step
 
 
+def parse_record(out: dict | None, group: str) -> Parsed:
+    """解析一条输出记录。第 5 组把第一阶段的矩阵和第二阶段的结论合并成一个结果。"""
+    if not out or out.get("error"):
+        return Parsed(errors=["无输出或调用失败"])
+    if group != "pipeline":
+        return parse_output(out.get("text") or "", group)
+    p1 = parse_output((out.get("stage1") or {}).get("text") or "", "restore")
+    stage2 = out.get("stage2")
+    if stage2 is None:
+        return Parsed(
+            matrix=p1.matrix, matrix_shape_ok=p1.matrix_shape_ok, matrix_valid=p1.matrix_valid,
+            errors=[f"复原：{e}" for e in p1.errors] + ["第一阶段没有得到 8×8 矩阵，未进行判断"],
+        )
+    p2 = parse_output(stage2.get("text") or "", "judge")
+    return Parsed(
+        obj=p2.obj, matrix=p1.matrix, matrix_shape_ok=p1.matrix_shape_ok, matrix_valid=p1.matrix_valid,
+        verdict=p2.verdict, verdict_valid=p2.verdict_valid, first_step=p2.first_step, first_coord=p2.first_coord,
+        format_valid=p1.matrix_valid and p2.format_valid,
+        errors=[f"复原：{e}" for e in p1.errors] + [f"判断：{e}" for e in p2.errors],
+    )
+
+
 def score_row(sample: dict, out: dict | None, group: str) -> dict:
     """单条样本、单次重复的评分。缺失或出错的输出视为格式无效、全部答错。"""
-    text = (out or {}).get("text") or ""
-    p: Parsed = parse_output(text, group) if out and not out.get("error") else Parsed(errors=["无输出或调用失败"])
+    p: Parsed = parse_record(out, group)
     row: dict = {
         "id": sample["id"],
         "compliant": sample["compliant"],
@@ -91,7 +115,7 @@ def score_row(sample: dict, out: dict | None, group: str) -> dict:
         row["verdict_ok"] = row["verdict"] == sample["verdict"]
         row["conclusion_ok"] = _conclusion_ok(row["verdict"], p.first_step, sample["verdict"], sample["first_violation_step"])
         row["coord_ok"] = row["verdict"] == "不合规" and p.first_coord == sample["first_violation_coordinate"]
-    if group == "joint" and p.format_valid:
+    if group in SELF_CHECK_GROUPS and p.format_valid:
         own = judge_matrix(p.matrix)
         row["consistent"] = _conclusion_ok(p.verdict, p.first_step, own.verdict, own.first_violation_step)
         m_ok, c_ok = row["whole_ok"], row["conclusion_ok"]
@@ -126,8 +150,10 @@ def compute_metrics(rows: list[dict], group: str) -> dict:
         m["unable_rate"] = _mean([r["verdict"] == "无法判断" for r in rows])
         m["first_step_acc"] = _mean([r["conclusion_ok"] for r in nc])
         m["first_coord_acc"] = _mean([r["coord_ok"] for r in nc])
-    if group == "joint":
+    if group in SELF_CHECK_GROUPS:
         m["self_consistency_rate"] = _mean([r["consistent"] for r in rows if "consistent" in r])
+        m["acc_when_matrix_ok"] = _mean([r["conclusion_ok"] for r in rows if r["whole_ok"]])
+        m["acc_when_matrix_wrong"] = _mean([r["conclusion_ok"] for r in rows if not r["whole_ok"]])
     return m
 
 
@@ -216,7 +242,7 @@ def evaluate_run(run_dir: str | Path, write: bool = True) -> dict:
         "summary": summary,
         "perf": _perf(all_rows),
     }
-    if group == "joint":
+    if group in SELF_CHECK_GROUPS:
         counts = {k: 0 for k in ATTRIBUTION_NAMES}
         for r in all_rows:
             if "attribution" in r:

@@ -23,7 +23,8 @@ from pathlib import Path
 from boltcheck import PLAN_VERSION, __version__
 from boltcheck.backends import BaselineBackend, NoisyBackend, build_openai_backend
 from boltcheck.dataset import dataset_sha256, load_config, load_dataset
-from boltcheck.prompts import GROUPS, PROMPT_VERSION, build_prompt
+from boltcheck.parse import parse_output
+from boltcheck.prompts import GROUPS, PROMPT_VERSION, build_judge_prompt, build_prompt
 
 
 class GpuMonitor:
@@ -127,6 +128,40 @@ def resolve_backend(backend: str, models_config: str | None, model: str | None, 
     return be, info
 
 
+def run_pipeline(backend, sample: dict, rep: int, prompt1: str, sha) -> dict:
+    """第 5 组：第一阶段复原矩阵；矩阵是 8×8 整数时，把它交回给模型做第二阶段判断。"""
+    g1 = backend.generate(prompt1, sample, "restore", rep)
+    stage1 = {"prompt_sha256": sha(prompt1), **g1.to_dict()}
+    stage2 = None
+    if g1.error is None:
+        p1 = parse_output(g1.text, "restore")
+        if p1.matrix_shape_ok:
+            prompt2 = build_judge_prompt(p1.matrix)
+            # 后端拿到的样本里，矩阵换成模型自己复原的（只影响 baseline / noisy 模拟后端）
+            g2 = backend.generate(prompt2, {**sample, "order_matrix": p1.matrix}, "judge", rep)
+            stage2 = {"prompt_sha256": sha(prompt2), **g2.to_dict()}
+    stages = [st for st in (stage1, stage2) if st]
+
+    def total(key):
+        vals = [st.get(key) for st in stages if st.get(key) is not None]
+        return sum(vals) if vals else None
+
+    return {
+        "sample_id": sample["id"],
+        "repeat": rep,
+        "prompt_sha256": stage1["prompt_sha256"],
+        "text": stage2["text"] if stage2 else "",
+        "reasoning": None,
+        "prompt_tokens": total("prompt_tokens"),
+        "completion_tokens": total("completion_tokens"),
+        "latency_s": total("latency_s") or 0.0,
+        "finish_reason": "length" if any(st.get("finish_reason") == "length" for st in stages) else (stages[-1].get("finish_reason")),
+        "error": stage1["error"] or (stage2 or {}).get("error"),
+        "stage1": stage1,
+        "stage2": stage2,
+    }
+
+
 def _safe(s: str) -> str:
     return "".join(ch if ch.isalnum() or ch in "-." else "-" for ch in s)
 
@@ -214,24 +249,28 @@ def run_experiment(
     lock = threading.Lock()
     counter = {"n": total - len(jobs)}
 
+    def sha(text: str) -> str:
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
     def work(job):
         sample, rep = job
         prompt = build_prompt(group, sample)
         t0 = time.perf_counter()
-        gen = backend.generate(prompt, sample, group, rep)
+        if group == "pipeline":
+            rec = run_pipeline(backend, sample, rep, prompt, sha)
+            gen_error = rec["error"]
+            latency = rec["latency_s"]
+        else:
+            gen = backend.generate(prompt, sample, group, rep)
+            rec = {"sample_id": sample["id"], "repeat": rep, "prompt_sha256": sha(prompt), **gen.to_dict()}
+            gen_error, latency = gen.error, gen.latency_s
         t1 = time.perf_counter()
-        rec = {
-            "sample_id": sample["id"],
-            "repeat": rep,
-            "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:16],
-            **gen.to_dict(),
-            "gpu_peak_mib": monitor.peak_between(t0, t1) if monitor else None,
-        }
+        rec["gpu_peak_mib"] = monitor.peak_between(t0, t1) if monitor else None
         with lock:
             with open(out_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
             counter["n"] += 1
-            status = f"错误：{gen.error[:80]}" if gen.error else f"{gen.latency_s:.1f}s"
+            status = f"错误：{gen_error[:80]}" if gen_error else f"{latency:.1f}s"
             log(f"[{counter['n']}/{total}] {sample['id']} 第{rep + 1}次 {status}")
 
     try:
