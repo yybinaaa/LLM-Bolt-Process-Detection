@@ -2,6 +2,12 @@
 
 本文件记录实验方案、数据集与代码的重要变更，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。方案正文以 `docs/experiment-plan.md` 为准，逐行改动可在 Git 提交记录中查看。版本规则见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
+## [未发布]
+
+### 新增
+
+- 登记 Qwen3-4B INT4 提示词 v1.4 两阶段自动试跑（5 条，运行 20261115-210203_pipeline_qwen3-4b-instruct-2507-int4_greedy），附原始结果、查看器与 GitHub 实验归档链接；本次为试跑。
+
 ## [代码 0.7.1] - 2026-11-15
 
 对应方案 v1.9、提示词 v1.4（提示词不变）。
