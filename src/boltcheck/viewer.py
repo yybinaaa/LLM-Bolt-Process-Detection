@@ -84,6 +84,7 @@ def run_view_data(run_dir: str | Path) -> dict:
                 "wholeOk": row.get("whole_ok"),
                 "transposed": row.get("transposed"),
                 "attribution": row.get("attribution"),
+                "layerAcc": row.get("layer_acc"),
             })
         item["model"] = reps
         items.append(item)
@@ -318,12 +319,13 @@ function card(it) {
       if (r.wholeOk === false && r.m) badges.push(`<span class="tag bad">复原错误</span>`);
       if (r.transposed) badges.push(`<span class="tag warn">行列写反</span>`);
       if (r.attribution) badges.push(`<span class="tag">${NAMES[r.attribution]}</span>`);
+      const layerInfo = r.layerAcc == null ? "" : `；层级标注对 ${Math.round(r.layerAcc * 64)}/64`;
       const showGrid = DATA.group !== "judge";
       const mLabel = isPipe ? "第一步，模型复原" : (DATA.group === "judge" ? "模型判断" : "模型复原");
       const claimed = r.verdict === "不合规" ? r.step : null;
       $(".model", el).innerHTML = `<h3>${mLabel} ${badges.join(" ")}</h3>` +
         (showGrid ? (r.m ? gridHTML(r.m, {truth: it.m, first: claimed}) : `<div class="info">没有可解析的 8×8 矩阵：${(r.errors || []).join("；")}</div>`) : "") +
-        `<div class="info">${DATA.group !== "restore" ? verdict : ""}</div>`;
+        `<div class="info">${DATA.group !== "restore" ? verdict + layerInfo : ""}</div>`;
       applyStep(el, +$("input[type=range]", el).value);
     };
     // 按"模型结果"筛选时，默认显示第一次出问题的那一次重复

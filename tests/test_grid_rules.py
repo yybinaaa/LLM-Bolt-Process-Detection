@@ -106,3 +106,33 @@ def test_near_same_boundary():
     assert near_same_boundary([14, 19])
     assert not near_same_boundary([13, 17])
     assert not near_same_boundary([4, 17])  # 不同交界
+
+
+def forward_check(seq):
+    """提示词 v1.2 写给模型的检查方法：维护各层剩余数，从前往后扫。"""
+    remaining = {1: 4, 2: 12, 3: 20, 4: 28}
+    out = []
+    for t, p in enumerate(seq, start=1):
+        m = min(k for k, v in remaining.items() if v > 0)
+        if layer_of(p) > m:
+            out.append(t)
+        remaining[layer_of(p)] -= 1
+    return out
+
+
+def test_prompt_procedure_equals_formal_definition():
+    rng = random.Random(5)
+    for _ in range(500):
+        seq = list(ALL_COORDS)
+        rng.shuffle(seq)
+        assert forward_check(seq) == violation_steps(seq)
+    for _ in range(300):
+        seq = compliant_sequence(rng)
+        res = random_perturbation(seq, rng.choice(METHODS), rng)
+        seq = res[0] if res else seq
+        assert forward_check(seq) == violation_steps(seq)
+
+
+def test_prompt_layer_formula():
+    from boltcheck.grid import layer_rc
+    assert all(layer_rc(r, c) == 5 - min(r, c, 9 - r, 9 - c) for r in range(1, 9) for c in range(1, 9))

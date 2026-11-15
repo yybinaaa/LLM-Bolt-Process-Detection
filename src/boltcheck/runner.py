@@ -28,7 +28,9 @@ from boltcheck.prompts import GROUPS, PROMPT_VERSION, build_judge_prompt, build_
 
 
 class GpuMonitor:
-    """定时调用 nvidia-smi 记录显存占用（MiB，所有 GPU 求和）。
+    """定时调用 nvidia-smi 记录显存占用（MiB，所有 GPU 求和），同时记录两个读数：
+    - 整卡占用：包含桌面等其他程序；
+    - 计算进程占用：nvidia-smi --query-compute-apps 列出的进程之和，通常就是 vLLM（Windows 上可能读不到）。
 
     注意：vLLM 启动时按 --gpu-memory-utilization 预分配显存，这里记录的是进程实际占用的总量，
     主要用于确认服务没有超出显存预算（3～5GB），不等于模型推理的最小需求。
@@ -37,6 +39,7 @@ class GpuMonitor:
     def __init__(self, interval_s: float = 0.5):
         self.interval_s = interval_s
         self.samples: list[tuple[float, int]] = []
+        self.app_samples: list[tuple[float, int]] = []
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.available = shutil.which("nvidia-smi") is not None
@@ -51,11 +54,26 @@ class GpuMonitor:
         except (OSError, ValueError, subprocess.SubprocessError):
             return None
 
+    def _read_apps(self) -> int | None:
+        try:
+            out = subprocess.run(
+                ["nvidia-smi", "--query-compute-apps=used_memory", "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=5,
+            ).stdout
+            vals = [int(x) for x in out.split() if x.strip().isdigit()]
+            return sum(vals) if vals else None
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return None
+
     def _loop(self) -> None:
         while not self._stop.is_set():
+            now = time.perf_counter()
             v = self._read()
             if v is not None:
-                self.samples.append((time.perf_counter(), v))
+                self.samples.append((now, v))
+            a = self._read_apps()
+            if a is not None:
+                self.app_samples.append((now, a))
             self._stop.wait(self.interval_s)
 
     def start(self) -> "GpuMonitor":
@@ -69,10 +87,11 @@ class GpuMonitor:
         if self._thread:
             self._thread.join(timeout=5)
 
-    def peak_between(self, t0: float, t1: float) -> int | None:
-        vals = [v for t, v in self.samples if t0 <= t <= t1]
-        if not vals and self.samples:
-            vals = [min(self.samples, key=lambda s: abs(s[0] - t1))[1]]
+    def peak_between(self, t0: float, t1: float, apps: bool = False) -> int | None:
+        samples = self.app_samples if apps else self.samples
+        vals = [v for t, v in samples if t0 <= t <= t1]
+        if not vals and samples:
+            vals = [min(samples, key=lambda s: abs(s[0] - t1))[1]]
         return max(vals) if vals else None
 
 
@@ -266,6 +285,7 @@ def run_experiment(
             gen_error, latency = gen.error, gen.latency_s
         t1 = time.perf_counter()
         rec["gpu_peak_mib"] = monitor.peak_between(t0, t1) if monitor else None
+        rec["gpu_apps_peak_mib"] = monitor.peak_between(t0, t1, apps=True) if monitor else None
         with lock:
             with open(out_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
