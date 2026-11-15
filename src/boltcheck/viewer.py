@@ -85,6 +85,9 @@ def run_view_data(run_dir: str | Path) -> dict:
                 "transposed": row.get("transposed"),
                 "attribution": row.get("attribution"),
                 "layerAcc": row.get("layer_acc"),
+                "blockMax": p.block_max if p else None,
+                "blockOk": row.get("block_whole_ok"),
+                "cellsAcc": row.get("cells_acc"),
             })
         item["model"] = reps
         items.append(item)
@@ -319,12 +322,14 @@ function card(it) {
       if (r.wholeOk === false && r.m) badges.push(`<span class="tag bad">复原错误</span>`);
       if (r.transposed) badges.push(`<span class="tag warn">行列写反</span>`);
       if (r.attribution) badges.push(`<span class="tag">${NAMES[r.attribution]}</span>`);
-      const layerInfo = r.layerAcc == null ? "" : `；层级标注对 ${Math.round(r.layerAcc * 64)}/64`;
+      let layerInfo = r.layerAcc == null ? "" : `；层级标注对 ${Math.round(r.layerAcc * 64)}/64`;
+      if (r.blockMax) layerInfo += `；区块最大数 [${r.blockMax.join(", ")}]${r.blockOk === true ? "（正确）" : r.blockOk === false ? "（有误）" : ""}`;
+      const cellsInfo = r.cellsAcc == null ? "" : `<div class="info">逐格清单对 ${Math.round(r.cellsAcc * 64)}/64</div>`;
       const showGrid = DATA.group !== "judge";
       const mLabel = isPipe ? "第一步，模型复原" : (DATA.group === "judge" ? "模型判断" : "模型复原");
       const claimed = r.verdict === "不合规" ? r.step : null;
       $(".model", el).innerHTML = `<h3>${mLabel} ${badges.join(" ")}</h3>` +
-        (showGrid ? (r.m ? gridHTML(r.m, {truth: it.m, first: claimed}) : `<div class="info">没有可解析的 8×8 矩阵：${(r.errors || []).join("；")}</div>`) : "") +
+        (showGrid ? (r.m ? gridHTML(r.m, {truth: it.m, first: claimed}) : `<div class="info">没有可解析的 8×8 矩阵：${(r.errors || []).join("；")}</div>`) : "") + cellsInfo +
         `<div class="info">${DATA.group !== "restore" ? verdict + layerInfo : ""}</div>`;
       applyStep(el, +$("input[type=range]", el).value);
     };

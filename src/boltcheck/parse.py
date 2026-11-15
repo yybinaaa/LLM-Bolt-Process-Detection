@@ -25,7 +25,9 @@ class Parsed:
     verdict_valid: bool = False
     first_step: int | None = None
     first_coord: list[int] | None = None
-    step_layers: list[int] | None = None  # 提示词 v1.2 起要求输出；不影响格式有效性，单独统计
+    step_layers: list[int] | None = None  # 提示词 v1.2 要求输出；不影响格式有效性，单独统计
+    cells: dict | None = None  # 提示词 v1.3 复原时先写的逐格清单 {(x, y): 步数}；不影响格式有效性
+    block_max: list[int] | None = None  # 提示词 v1.3 判断时写的三个区块最大数；不影响格式有效性
     format_valid: bool = False
     errors: list[str] = field(default_factory=list)
 
@@ -49,15 +51,19 @@ def extract_json(text: str) -> tuple[dict | None, str | None]:
             pass
     decoder = json.JSONDecoder()
     found = None
-    for i, ch in enumerate(body):
-        if ch != "{":
+    i = 0
+    while i < len(body):
+        if body[i] != "{":
+            i += 1
             continue
         try:
-            obj, _ = decoder.raw_decode(body[i:])
+            obj, end = decoder.raw_decode(body[i:])
         except json.JSONDecodeError:
+            i += 1
             continue
         if isinstance(obj, dict):
-            found = obj  # 取最后一个完整对象
+            found = obj  # 取最后一个完整的顶层对象
+        i += end  # 跳过整个对象，避免把内部嵌套的对象（如 cells）当成答案
     if found is None:
         return None, "未找到可解析的 JSON 对象"
     return found, None
@@ -81,6 +87,19 @@ def _as_layers(v: Any) -> list[int] | None:
     if any(t is None or not 1 <= t <= 4 for t in out):
         return None
     return out  # type: ignore[return-value]
+
+
+def _as_cells(v: Any) -> dict | None:
+    """逐格清单：键为坐标字符串（如 "(10,10)"），值为步数；只保留能解析的项，一项都没有则视为没给。"""
+    if not isinstance(v, dict):
+        return None
+    out = {}
+    for key, val in v.items():
+        nums = re.findall(r"\d+", str(key))
+        step = _as_int(val)
+        if len(nums) == 2 and step is not None and is_valid_coord([int(nums[0]), int(nums[1])]):
+            out[(int(nums[0]), int(nums[1]))] = step
+    return out or None
 
 
 def _as_coord(v: Any) -> list[int] | None:
@@ -109,6 +128,7 @@ def parse_output(text: str, group: str) -> Parsed:
         p.matrix = m if isinstance(m, list) else None
         p.matrix_shape_ok = is_matrix_shape(m)
         p.matrix_valid = is_valid_matrix(m)
+        p.cells = _as_cells(obj.get("cells"))
         if not p.matrix_shape_ok:
             p.errors.append("order_matrix 不是 8×8 整数矩阵")
         elif not p.matrix_valid:
@@ -124,6 +144,9 @@ def parse_output(text: str, group: str) -> Parsed:
         p.first_step = _as_int(obj.get("first_violation_step"))
         p.first_coord = _as_coord(obj.get("first_violation_coordinate"))
         p.step_layers = _as_layers(obj.get("step_layers"))
+        bm = obj.get("block_max")
+        if isinstance(bm, list) and len(bm) == 3 and all(_as_int(v) is not None for v in bm):
+            p.block_max = [_as_int(v) for v in bm]  # type: ignore[misc]
         if p.verdict == "不合规" and not (p.first_step and 1 <= p.first_step <= N_BOLTS):
             p.errors.append("判为不合规但 first_violation_step 不是 1～64 的整数")
 

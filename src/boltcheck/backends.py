@@ -17,7 +17,7 @@ import urllib.request
 from dataclasses import asdict, dataclass
 
 from boltcheck.grid import transpose
-from boltcheck.rules import judge_matrix
+from boltcheck.rules import block_maxima, judge_matrix
 
 
 @dataclass
@@ -34,17 +34,23 @@ class Generation:
         return asdict(self)
 
 
+def _cells(matrix: list) -> dict:
+    return {f"({10 * (c + 1)},{10 * (r + 1)})": matrix[r][c] for r in range(8) for c in range(8)}
+
+
 def _answer_json(
     group: str, matrix: list | None, verdict: str | None, step: int | None, coord: list | None,
-    layers: list | None = None,
+    block_max: list | None = None,
 ) -> str:
+    """按提示词 v1.3 的字段顺序生成模拟回复。"""
     obj: dict = {}
     if group in ("joint", "restore"):
+        obj["cells"] = _cells(matrix) if matrix else None
         obj["order_matrix"] = matrix
     if group in ("joint", "judge"):
         obj.update(
             {
-                "step_layers": layers,
+                "block_max": block_max,
                 "verdict": verdict,
                 "first_violation_step": step,
                 "first_violation_coordinate": coord,
@@ -65,7 +71,7 @@ class BaselineBackend:
             sample["verdict"],
             sample["first_violation_step"],
             sample["first_violation_coordinate"],
-            sample["layers"],
+            block_maxima(sample["order_matrix"]),
         )
         return Generation(text=text, latency_s=time.perf_counter() - t0, finish_reason="stop")
 
@@ -93,10 +99,10 @@ class NoisyBackend:
             matrix = sample["order_matrix"]
         j = judge_matrix(matrix)
         verdict, step, coord = j.verdict, j.first_violation_step, j.first_violation_coordinate
-        layers = list(j.layers)
-        if rng.random() < 0.15:  # 模拟层级标错一处
-            k = rng.randrange(64)
-            layers[k] = layers[k] % 4 + 1
+        bmax = block_maxima(matrix)
+        if rng.random() < 0.15:  # 模拟区块最大数写错一个
+            k = rng.randrange(3)
+            bmax[k] += rng.choice([-1, 1])
         v = rng.random()
         if v < 0.05:
             verdict, step, coord = "无法判断", None, None
@@ -105,7 +111,7 @@ class NoisyBackend:
                 verdict, step, coord = "不合规", rng.randint(5, 36), None
             else:
                 verdict, step, coord = "合规", None, None
-        return Generation(text=_answer_json(group, matrix, verdict, step, coord, layers), finish_reason="stop", latency_s=0.01)
+        return Generation(text=_answer_json(group, matrix, verdict, step, coord, bmax), finish_reason="stop", latency_s=0.01)
 
 
 class OpenAICompatBackend:

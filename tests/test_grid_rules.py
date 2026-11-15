@@ -136,3 +136,23 @@ def test_prompt_procedure_equals_formal_definition():
 def test_prompt_layer_formula():
     from boltcheck.grid import layer_rc
     assert all(layer_rc(r, c) == 5 - min(r, c, 9 - r, 9 - c) for r in range(1, 9) for c in range(1, 9))
+
+
+def test_block_check_equals_formal_definition():
+    """提示词 v1.3 的区块检查（中心 2×2 / 4×4 / 6×6 最大数）与违规定义等价。"""
+    from boltcheck.rules import block_check, block_maxima
+
+    rng = random.Random(9)
+    for _ in range(1500):
+        seq = list(ALL_COORDS)
+        rng.shuffle(seq)
+        assert block_check(order_matrix(seq)) == violation_steps(seq)
+    for _ in range(1500):
+        seq = compliant_sequence(rng)
+        for _ in range(rng.randint(0, 3)):
+            res = random_perturbation(seq, rng.choice(METHODS), rng)
+            if res:
+                seq = res[0]
+        m = order_matrix(seq)
+        assert block_check(m) == violation_steps(seq)
+        assert (block_maxima(m) == [4, 16, 36]) == judge(seq).compliant
