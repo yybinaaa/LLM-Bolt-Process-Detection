@@ -12,6 +12,8 @@
 pip install -e ".[dev]"
 pytest -q
 boltcheck verify-data                               # 校验数据集
+boltcheck show-sample v1.1-0005                     # 在终端把样本展开成 8×8 表格，标出安装顺序
+boltcheck view                                      # 生成网页查看器 data/v1.1/view.html
 boltcheck run --backend baseline --group joint      # 不用 GPU，跑通第 1 组程序规则基线
 ```
 
@@ -49,6 +51,7 @@ src/boltcheck/
   runner.py                   执行运行、记录原始输出与运行信息
   parse.py                    解析模型输出、校验格式
   evaluate.py                 指标、自洽率、错误归因、分组报告
+  viewer.py                   8×8 表格可视化（网页查看器、终端表格）
   cli.py                      命令行入口
 tests/                        单元测试与端到端测试
 docs/                         方案、运行指南、实验日志
