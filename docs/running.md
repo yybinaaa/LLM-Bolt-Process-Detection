@@ -110,7 +110,7 @@ curl http://localhost:8000/v1/models
 
    打开 `runs/<运行 ID>/outputs.jsonl` 看 `text` 字段。如果大量出现重复内容或长度截断，换用 `--profile sampled`。
 
-2. 主测模型跑三组（第 2、3、4 组）：
+2. 主测模型跑四组（第 2、3、4、5 组）：
 
    ```bash
    boltcheck run --model qwen3-4b-instruct-2507-int4 --profile greedy --group joint   --gpu-monitor
@@ -118,7 +118,15 @@ curl http://localhost:8000/v1/models
    boltcheck run --model qwen3-4b-instruct-2507-int4 --profile greedy --group judge   --gpu-monitor
    ```
 
-3. 换成 Phi-4-mini，同样三组，`--model phi-4-mini-instruct-int4`。
+   第 5 组两阶段：模型先把坐标复原成标好安装顺序的表格，再拿这张表按规则判断。每条样本调用两次，耗时约为其他组的两倍：
+
+   ```bash
+   boltcheck run --model qwen3-4b-instruct-2507-int4 --profile greedy --group pipeline --gpu-monitor
+   ```
+
+   第一阶段没得到 8×8 矩阵时不做第二阶段，记为格式无效。报告里的"复原正确 / 错误时的判断准确率"可以看出复原出错对判断的影响；和第 4 组（给标准矩阵判断）比较，差距就是复原误差传递造成的损失。`boltcheck show-prompt --group pipeline` 可以看两个阶段的提示词。
+
+3. 换成 Phi-4-mini，同样四组，`--model phi-4-mini-instruct-int4`。
 
 4. 换成 Qwen3-1.7B，先跑非思考（`--profile greedy`），再跑思考（`--profile thinking`，每条样本 3 次，耗时明显更长）：
 
@@ -135,6 +143,7 @@ curl http://localhost:8000/v1/models
 | 第 2 组 联合任务 | `--group joint` |
 | 第 3 组 仅做还原 | `--group restore` |
 | 第 4 组 仅做判断 | `--group judge` |
+| 第 5 组 两阶段（先复原，再按自己复原的表格判断） | `--group pipeline` |
 
 ## 7. 中断与续跑
 
@@ -155,7 +164,7 @@ boltcheck evaluate runs/<运行 ID>
 | 文件 | 内容 |
 |---|---|
 | `meta.json` | Git 提交号、是否有未提交改动、数据集哈希、模型与采样参数、提示词版本 |
-| `outputs.jsonl` | 每条样本每次重复一行：原始回复、推理内容、token 数、延迟、峰值显存、错误信息 |
+| `outputs.jsonl` | 每条样本每次重复一行：原始回复、推理内容、token 数、延迟、峰值显存、错误信息；第 5 组另有 `stage1`、`stage2` 两个字段，分别保存两次调用的原始回复 |
 | `metrics.json` | 全部指标、错误归因、分组结果 |
 | `report.md` | 便于阅读的报告 |
 | `log_row.md` | 粘贴到实验日志的一行 |
