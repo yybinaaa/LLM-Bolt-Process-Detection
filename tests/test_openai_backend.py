@@ -80,13 +80,31 @@ def test_connection_error_is_recorded(monkeypatch):
 
 
 def test_models_config_profiles():
-    cfg = os.path.join(os.path.dirname(__file__), "..", "configs", "models.toml")
-    _, info = resolve_backend("openai", cfg, "qwen3-vl-2b-instruct", "greedy")
+    cfg_path = os.path.join(os.path.dirname(__file__), "..", "configs", "models.toml")
+    _, info = resolve_backend("openai", cfg_path, "qwen3-4b-instruct-2507-int4", "greedy")
     assert info["repeats"] == 1 and info["params"]["temperature"] == 0.0
-    _, info = resolve_backend("openai", cfg, "qwen3-vl-2b-thinking", "thinking")
-    assert info["repeats"] == 3 and info["params"]["max_tokens"] == 16384
+    assert info["params"]["chat_template_kwargs"] == {"enable_thinking": False}
+    assert info["hf_repo"] and info["quantization"]
+    _, info = resolve_backend("openai", cfg_path, "qwen3-1.7b-int8", "thinking")
+    assert info["repeats"] == 3 and info["params"]["max_tokens"] >= 16384
+    assert info["params"]["chat_template_kwargs"] == {"enable_thinking": True}
     with pytest.raises(ValueError):
-        resolve_backend("openai", cfg, "qwen3-vl-2b-instruct", "thinking")
+        resolve_backend("openai", cfg_path, "qwen3-4b-instruct-2507-int4", "thinking")
+
+
+def test_models_config_is_consistent():
+    """每个模型声明的配置都存在；本地模型都写明了权重来源和量化方式。"""
+    from boltcheck.dataset import load_config
+
+    cfg = load_config(os.path.join(os.path.dirname(__file__), "..", "configs", "models.toml"))
+    for name, m in cfg["models"].items():
+        for prof in m.get("profiles", []):
+            assert prof in cfg["profiles"], (name, prof)
+        if "localhost" in m["base_url"]:
+            assert m.get("hf_repo") and m.get("quantization"), name
+    for name, prof in cfg["profiles"].items():
+        if prof["params"].get("chat_template_kwargs", {}).get("enable_thinking"):
+            assert prof["params"]["max_tokens"] >= 16384, name
 
 
 def test_preflight_check(server):
@@ -98,3 +116,17 @@ def test_preflight_check(server):
     down = build_openai_backend({"base_url": "http://127.0.0.1:9/v1", "model": "m"}, {"params": {}})
     with pytest.raises(RuntimeError, match="无法连接"):
         down.check()
+
+
+def test_running_guide_matches_models_config():
+    """运行指南里每个 vllm serve 命令的 --served-model-name 都要能在 models.toml 里找到，反之亦然。"""
+    import re
+
+    from boltcheck.dataset import load_config
+
+    root = os.path.join(os.path.dirname(__file__), "..")
+    guide = open(os.path.join(root, "docs", "running.md"), encoding="utf-8").read()
+    served = set(re.findall(r"--served-model-name\s+(\S+)", guide))
+    cfg = load_config(os.path.join(root, "configs", "models.toml"))
+    local = {m["model"] for m in cfg["models"].values() if "localhost" in m["base_url"]}
+    assert served == local

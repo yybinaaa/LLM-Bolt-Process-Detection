@@ -255,7 +255,9 @@ def render_report(meta: dict, metrics: dict) -> str:
         f"# 运行报告：{meta['run_id']}",
         "",
         f"- 对照组：{meta['group_desc']}",
-        f"- 模型：{meta['model']}（后端 {meta['backend']}，配置 {meta['profile']}）",
+        f"- 模型：{meta['model']}（后端 {meta['backend']}，配置 {meta['profile']}）"
+        + (f"；权重 {meta['hf_repo']}" if meta.get("hf_repo") else "")
+        + (f"；{meta['quantization']}" if meta.get("quantization") else ""),
         f"- 重复次数：{metrics['repeats']}；样本数：{metrics['n_samples']}；找到输出：{metrics['n_outputs_found']}",
         f"- 数据集：{meta['dataset'].get('version')}（sha256 {meta['dataset']['sha256'][:12]}）",
         f"- 提示词 {meta['prompt_version']} · 代码 {meta['code_version']} · 提交 {commit or '—'}",
