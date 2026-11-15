@@ -142,41 +142,75 @@ def test_pipeline_two_stage_calls_and_metrics(tmp_path):
     assert "第 5 组" in data_view
 
 
-def test_prompt_v12_content():
+def test_prompt_v13_content():
     from boltcheck.prompts import PROMPT_VERSION, build_judge_prompt
 
-    assert PROMPT_VERSION == "v1.2"
+    assert PROMPT_VERSION == "v1.3"
     s = VIOLATING
     p = build_prompt("restore", s)
     x, y = s["coords"][0]
-    assert f"第1步 ({x},{y})" in p and f"第64步 ({s['coords'][63][0]},{s['coords'][63][1]})" in p
-    assert "本身不是螺栓位置" in p and "标注的步数" in p
+    assert f"({x},{y}) → 第1步" in p and f"({s['coords'][63][0]},{s['coords'][63][1]}) → 第64步" in p
+    assert "本身不是螺栓位置" in p and "抄下它右边的步数" in p
+    assert p.index("cells：") < p.index("order_matrix：")  # 先逐格抄步数，再排成矩阵
     j = build_judge_prompt(s["order_matrix"])
-    assert "5 − min(r, c, 9−r, 9−c)" in j and "各层剩余" in j
-    assert j.index("step_layers：") < j.index("verdict：")  # 先写层级、后下结论
+    assert "中心 2×2" in j and "M1 = 4、M2 = 16、M3 = 36" in j and "step_layers" not in j
+    assert j.index("block_max：") < j.index("verdict：")  # 先写区块最大数、后下结论
     jt = build_prompt("joint", s)
-    assert jt.index("order_matrix：") < jt.index("step_layers：") < jt.index("verdict：")
+    assert jt.index("cells：") < jt.index("order_matrix：") < jt.index("block_max：") < jt.index("verdict：")
 
 
-def test_step_layers_parse_and_metric():
+def test_extract_json_keeps_outer_object():
+    obj, _ = extract_json('{"cells": {"(10,10)": 1}, "order_matrix": [[1]]}')
+    assert set(obj) == {"cells", "order_matrix"}
+
+
+def test_cells_parse_and_metric():
     s = VIOLATING
-    good = answer(None, s["verdict"], s["first_violation_step"])
-    obj = json.loads(good)
+    m = s["order_matrix"]
+    cells = {f"({10 * (c + 1)},{10 * (r + 1)})": m[r][c] for r in range(8) for c in range(8)}
+    text = json.dumps({"cells": cells, "order_matrix": m})
+    row = score_row(s, {"text": text}, "restore")
+    assert row["cells_acc"] == 1.0 and row["whole_ok"]
+    cells["(10,10)"] = 0
+    row = score_row(s, {"text": json.dumps({"cells": cells, "order_matrix": m})}, "restore")
+    assert row["cells_acc"] == 63 / 64
+
+
+def test_step_layers_still_scored_for_old_runs():
+    """v1.2 运行重新评测时仍能统计层级标注；长度不对的 step_layers 视为没给，不统计。"""
+    s = VIOLATING
+    obj = json.loads(answer(None, s["verdict"], s["first_violation_step"]))
     obj["step_layers"] = s["layers"]
     row = score_row(s, {"text": json.dumps(obj, ensure_ascii=False)}, "judge")
     assert row["layer_acc"] == 1.0 and row["layer_whole_ok"]
-    obj["step_layers"] = s["layers"][:63]  # 长度不对视为没给
+    obj["step_layers"] = s["layers"] + [4] * 40  # 试跑中出现的"一长串 4"
     assert parse_output(json.dumps(obj), "judge").step_layers is None
     row = score_row(s, {"text": json.dumps(obj, ensure_ascii=False)}, "judge")
-    assert row["layer_acc"] == 0.0 and row["format_valid"]  # 不影响格式有效性
+    assert "layer_acc" not in row and row["format_valid"]
 
 
-def test_noisy_run_has_layer_metric(tmp_path):
+def test_block_max_metric(tmp_path):
     info = {"backend": "noisy", "model": "noisy", "profile": "-", "repeats": 1, "params": {}}
     run_dir = run_experiment(str(DATA), "judge", NoisyBackend(), info, out_root=str(tmp_path), limit=60, log=lambda *_: None)
     s = evaluate_run(run_dir)["summary"]
-    assert 0.9 < s["layer_label_acc"]["mean"] < 1.0
-    assert s["layer_label_whole_acc"]["mean"] < 1.0
+    assert 0.8 < s["block_max_acc"]["mean"] < 1.0
+    assert s["block_max_whole_acc"]["mean"] < 1.0
+    assert "layer_label_acc" not in s
+
+
+def test_invalid_pipeline_output_counts_as_wrong():
+    """第一阶段矩阵无效时，即使第二阶段的结论碰巧与标准答案一致，也按答错计（2026-11-15 v1.2 试跑发现的口径问题）。"""
+    s = VIOLATING
+    bad = [row[:] for row in s["order_matrix"]]
+    bad[0][0] = bad[0][1]  # 有重复，不是 1～64 的排列
+    out = {
+        "stage1": {"text": json.dumps({"order_matrix": bad})},
+        "stage2": {"text": answer(None, s["verdict"], s["first_violation_step"], s["first_violation_coordinate"])},
+        "error": None,
+    }
+    row = score_row(s, out, "pipeline")
+    assert not row["format_valid"]
+    assert row["verdict"] is None and not row["verdict_ok"] and not row["conclusion_ok"] and not row["coord_ok"]
 
 
 def test_gpu_monitor_peaks():

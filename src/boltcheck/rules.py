@@ -67,6 +67,30 @@ def judge_matrix(matrix: Sequence[Sequence[int]]) -> Judgement:
     return judge(sequence_from_matrix(matrix))
 
 
+# 按表格分区检查（提示词 v1.3）：中心 2×2、中间 4×4、中间 6×6，对应第 1 层、第 1～2 层、第 1～3 层
+BLOCKS = (
+    ("中心 2×2", range(4, 6), 4),   # 行列号范围（从 1 开始）、区块内螺栓数
+    ("中间 4×4", range(3, 7), 16),
+    ("中间 6×6", range(2, 8), 36),
+)
+
+
+def block_maxima(matrix: Sequence[Sequence[int]]) -> list[int]:
+    """三个区块里的最大步数 [M1, M2, M3]。合规当且仅当等于 [4, 16, 36]。"""
+    return [max(matrix[r - 1][c - 1] for r in rows for c in rows) for _, rows, _ in BLOCKS]
+
+
+def block_check(matrix: Sequence[Sequence[int]]) -> list[int]:
+    """按区块找违规步：区块外比该区块最大数小的数都是违规步。结果与 violation_steps 等价（测试验证）。"""
+    found: set[int] = set()
+    for (_, rows, _), m in zip(BLOCKS, block_maxima(matrix)):
+        for r in range(1, 9):
+            for c in range(1, 9):
+                if not (r in rows and c in rows) and matrix[r - 1][c - 1] < m:
+                    found.add(matrix[r - 1][c - 1])
+    return sorted(found)
+
+
 def near_same_boundary(positions: Sequence[int], window: int = 2) -> bool:
     """所有位置都在同一层交界附近：交界 b|b+1 两侧各 window 步以内，即 [b-window, b+1+window]。"""
     return any(all(b - window <= p <= b + 1 + window for p in positions) for b in LAYER_BOUNDARIES)

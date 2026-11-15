@@ -10,7 +10,8 @@ from pathlib import Path
 from boltcheck.dataset import load_dataset
 from boltcheck.grid import transpose
 from boltcheck.parse import Parsed, parse_output
-from boltcheck.rules import judge_matrix
+from boltcheck.grid import coord_of
+from boltcheck.rules import block_maxima, judge_matrix
 
 MATRIX_GROUPS = ("joint", "restore", "pipeline")
 VERDICT_GROUPS = ("joint", "judge", "pipeline")
@@ -23,6 +24,7 @@ METRIC_NAMES = {
     "matrix_cell_acc": "矩阵位置准确率",
     "matrix_whole_acc": "整矩阵正确率",
     "matrix_transposed_rate": "转置矩阵比例",
+    "cells_acc": "逐格清单准确率",
     "verdict_acc": "合规判断准确率",
     "detection_rate": "违规检出率",
     "false_alarm_rate": "合规误报率",
@@ -30,6 +32,8 @@ METRIC_NAMES = {
     "first_step_acc": "首次违规步定位准确率",
     "first_coord_acc": "首次违规坐标准确率",
     "self_consistency_rate": "自洽率",
+    "block_max_acc": "区块最大数准确率",
+    "block_max_whole_acc": "区块最大数全对比例",
     "layer_label_acc": "层级标注准确率",
     "layer_label_whole_acc": "层级标注全对比例",
     "acc_when_matrix_ok": "复原正确时的判断准确率",
@@ -72,14 +76,14 @@ def parse_record(out: dict | None, group: str) -> Parsed:
     stage2 = out.get("stage2")
     if stage2 is None:
         return Parsed(
-            matrix=p1.matrix, matrix_shape_ok=p1.matrix_shape_ok, matrix_valid=p1.matrix_valid,
+            matrix=p1.matrix, matrix_shape_ok=p1.matrix_shape_ok, matrix_valid=p1.matrix_valid, cells=p1.cells,
             errors=[f"复原：{e}" for e in p1.errors] + ["第一阶段没有得到 8×8 矩阵，未进行判断"],
         )
     p2 = parse_output(stage2.get("text") or "", "judge")
     return Parsed(
-        obj=p2.obj, matrix=p1.matrix, matrix_shape_ok=p1.matrix_shape_ok, matrix_valid=p1.matrix_valid,
+        obj=p2.obj, matrix=p1.matrix, matrix_shape_ok=p1.matrix_shape_ok, matrix_valid=p1.matrix_valid, cells=p1.cells,
         verdict=p2.verdict, verdict_valid=p2.verdict_valid, first_step=p2.first_step, first_coord=p2.first_coord,
-        step_layers=p2.step_layers,
+        step_layers=p2.step_layers, block_max=p2.block_max,
         format_valid=p1.matrix_valid and p2.format_valid,
         errors=[f"复原：{e}" for e in p1.errors] + [f"判断：{e}" for e in p2.errors],
     )
@@ -114,17 +118,24 @@ def score_row(sample: dict, out: dict | None, group: str) -> dict:
             row["cell_acc"] = 0.0
         row["whole_ok"] = p.matrix_shape_ok and p.matrix == truth_m
         row["transposed"] = p.matrix_shape_ok and p.matrix == transpose(truth_m)
+        if p.cells is not None:
+            row["cells_acc"] = sum(p.cells.get(coord_of(r + 1, c + 1)) == truth_m[r][c] for r in range(8) for c in range(8)) / 64
     if group in VERDICT_GROUPS:
-        row["verdict"] = p.verdict if p.verdict_valid else None
+        # 格式无效（含第 5 组第一阶段矩阵无效）时，判断类指标一律按答错计
+        row["verdict"] = p.verdict if (p.verdict_valid and p.format_valid) else None
         row["verdict_ok"] = row["verdict"] == sample["verdict"]
         row["conclusion_ok"] = _conclusion_ok(row["verdict"], p.first_step, sample["verdict"], sample["first_violation_step"])
         row["coord_ok"] = row["verdict"] == "不合规" and p.first_coord == sample["first_violation_coordinate"]
         # 层级标注：与"模型所判断的那张矩阵"推出的每步层级比较——第 4 组是标准矩阵，第 2、5 组是模型自己复原的矩阵
         ref = truth_m if group == "judge" else (p.matrix if p.matrix_valid else None)
-        if ref is not None:
+        if ref is not None and p.block_max is not None:
+            ref_max = block_maxima(ref)
+            row["block_acc"] = sum(a == b for a, b in zip(p.block_max, ref_max)) / 3
+            row["block_whole_ok"] = p.block_max == ref_max
+        if ref is not None and p.step_layers is not None:
             ref_layers = judge_matrix(ref).layers
             got = p.step_layers or []
-            row["layer_acc"] = sum(a == b for a, b in zip(got, ref_layers)) / 64 if got else 0.0
+            row["layer_acc"] = sum(a == b for a, b in zip(got, ref_layers)) / 64
             row["layer_whole_ok"] = got == ref_layers
     if group in SELF_CHECK_GROUPS and p.format_valid:
         own = judge_matrix(p.matrix)
@@ -152,6 +163,8 @@ def compute_metrics(rows: list[dict], group: str) -> dict:
         m["matrix_cell_acc"] = _mean([r["cell_acc"] for r in rows])
         m["matrix_whole_acc"] = _mean([r["whole_ok"] for r in rows])
         m["matrix_transposed_rate"] = _mean([r["transposed"] for r in rows])
+        if any("cells_acc" in r for r in rows):  # 只有要求输出 cells 的提示词（v1.3 起）才统计；没给按 0 计
+            m["cells_acc"] = _mean([r.get("cells_acc", 0.0) for r in rows])
     if group in VERDICT_GROUPS:
         nc = [r for r in rows if not r["compliant"]]
         cp = [r for r in rows if r["compliant"]]
@@ -161,8 +174,12 @@ def compute_metrics(rows: list[dict], group: str) -> dict:
         m["unable_rate"] = _mean([r["verdict"] == "无法判断" for r in rows])
         m["first_step_acc"] = _mean([r["conclusion_ok"] for r in nc])
         m["first_coord_acc"] = _mean([r["coord_ok"] for r in nc])
-        m["layer_label_acc"] = _mean([r["layer_acc"] for r in rows if "layer_acc" in r])
-        m["layer_label_whole_acc"] = _mean([r["layer_whole_ok"] for r in rows if "layer_whole_ok" in r])
+        if any("block_acc" in r for r in rows):
+            m["block_max_acc"] = _mean([r["block_acc"] for r in rows if "block_acc" in r])
+            m["block_max_whole_acc"] = _mean([r["block_whole_ok"] for r in rows if "block_whole_ok" in r])
+        if any("layer_acc" in r for r in rows):
+            m["layer_label_acc"] = _mean([r["layer_acc"] for r in rows if "layer_acc" in r])
+            m["layer_label_whole_acc"] = _mean([r["layer_whole_ok"] for r in rows if "layer_whole_ok" in r])
     if group in SELF_CHECK_GROUPS:
         m["self_consistency_rate"] = _mean([r["consistent"] for r in rows if "consistent" in r])
         m["acc_when_matrix_ok"] = _mean([r["conclusion_ok"] for r in rows if r["whole_ok"]])
@@ -316,8 +333,9 @@ def render_report(meta: dict, metrics: dict) -> str:
         if key in metrics["summary"]:
             lines.append(f"| {name} | {_pct(metrics['summary'][key])} |")
     lines.append("")
-    lines.append("格式无效和调用失败的样本都计入分母、按答错处理；多次重复时显示均值 ± 标准差（百分点）。"
-                 "层级标注准确率与模型所判断的那张矩阵比较（第 4 组为标准矩阵，第 2、5 组为模型自己复原的矩阵）。")
+    lines.append("格式无效和调用失败的样本都计入分母，判断类指标按答错处理（第 5 组第一阶段矩阵无效时，即使第二阶段给出了结论也按答错计）；"
+                 "多次重复时显示均值 ± 标准差（百分点）。区块最大数、层级标注与模型所判断的那张矩阵比较"
+                 "（第 4 组为标准矩阵，第 2、5 组为模型自己复原的矩阵）。")
 
     if "attribution" in metrics:
         total = sum(metrics["attribution"].values())
