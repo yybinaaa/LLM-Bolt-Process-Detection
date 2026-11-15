@@ -1,10 +1,10 @@
 # LLM-Bolt-Process-Detection
 
-用大模型判断工人安装高强螺栓的过程是否符合作业要求。输入为时序图片或视频，部署约束为单卡 8GB 显存。
+用大模型判断工人安装高强螺栓的过程是否符合作业要求。输入为时序图片或视频；推理服务显存控制在 3～5GB（开发机为 8GB 显卡）。
 
 ## 当前阶段
 
-第一版实验：以模拟坐标代替目标检测结果，验证文字大模型能否还原 8×8 螺栓节点的初拧顺序，并按"由中间向四周"的分层规则判断是否合规。本地主测模型为 Qwen3-VL-2B-Instruct。
+第一版实验：以模拟坐标代替目标检测结果，验证文字大模型能否还原 8×8 螺栓节点的初拧顺序，并按"由中间向四周"的分层规则判断是否合规。本地主测模型为 Qwen3-4B-Instruct-2507（INT4），对比 Phi-4-mini-instruct（INT4）和 Qwen3-1.7B（INT8，含思考模式）。
 
 ## 快速开始
 
@@ -18,15 +18,15 @@ boltcheck run --backend baseline --group joint      # 不用 GPU，跑通第 1 �
 接上本地 vLLM 后运行正式实验：
 
 ```bash
-boltcheck run --model qwen3-vl-2b-instruct --profile greedy --group joint --gpu-monitor
+boltcheck run --model qwen3-4b-instruct-2507-int4 --profile greedy --group joint --gpu-monitor
 ```
 
 完整步骤见 [本地运行指南](docs/running.md)。
 
 ## 文档
 
-- [实验方案](docs/experiment-plan.md)：当前版本 v1.2，修改历史见 Git 提交记录
-- Word 版本：[v1.2](docs/experiment-plan-v1.2.docx)（当前）、[v1.1](docs/experiment-plan-v1.1.docx)、[v1.0](docs/experiment-plan-v1.0.docx)（原稿）
+- [实验方案](docs/experiment-plan.md)：当前版本 v1.3，修改历史见 Git 提交记录
+- Word 版本：[v1.3](docs/experiment-plan-v1.3.docx)（当前）、[v1.2](docs/experiment-plan-v1.2.docx)、[v1.1](docs/experiment-plan-v1.1.docx)、[v1.0](docs/experiment-plan-v1.0.docx)（原稿）
 - [本地运行指南](docs/running.md)
 - [实验日志](docs/experiment-log.md)：正式实验结果登记
 - [迭代规范](CONTRIBUTING.md)：版本号、分支、提交信息、实验登记
