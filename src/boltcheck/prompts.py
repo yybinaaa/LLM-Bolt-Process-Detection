@@ -18,13 +18,20 @@ v1.5 相对 v1.4（依据提示词 v1.4 的两次同设置 5 条试跑：进入�
 判为合规、理由逐字相同，其中 3 次与所判断矩阵的实际最大数不符，包括 1 条真实不合规的样本）：
 - 判断：先从步骤矩阵中按行原样抄出三个区块（blocks：center2 / center4 / center6），再在抄出的区块里找最大数写 block_max，
   最后下结论；写明 M1～M3 必须是区块里实际出现的数。复原部分不变。
+
+v1.6 相对 v1.5（依据提示词 v1.5 的同设置 5 条试跑：照搬 [4, 16, 36] 消失，但 JSON 里的区块按"第几到第几个数"取，
+抄成了一维且位置错乱，block_max 变成 [4, 18, 64] 等，2 条随后在 JSON 后面写"错误修正"直到长度上限；
+而在修正文字里，模型标出"Row 4: …"并"去掉首尾"时大多抄对）：
+- 判断：矩阵每行前标出"第 r 行"；区块改为由外向内逐层剥掉一圈得到：center6 去掉第 1、8 行和每行首尾，
+  center4、center2 依次对上一个区块做同样操作；blocks 按 center6 → center4 → center2 的顺序写；
+- 要求输出完 JSON 立即结束，不再附加解释或修正。复原部分不变。
 """
 
 from __future__ import annotations
 
 from typing import Sequence
 
-PROMPT_VERSION = "v1.5"
+PROMPT_VERSION = "v1.6"
 
 GROUPS = {
     "joint": "第 2 组：联合任务（还原矩阵 + 合规判断）",
@@ -53,10 +60,10 @@ RULES = (
     "3. 同一层内的操作顺序不限。\n"
     "4. 如果某一步操作时，还有比它更内层的螺栓没有操作，这一步就是违规步。\n"
     "检查方法（在步骤矩阵上按区块检查）：\n"
-    "（1）先从步骤矩阵中原样抄出三个区块，每个区块按行写成二维数组：\n"
-    "    center2：第 4～5 行，每行只取第 4～5 个数（2 行 × 2 个）；\n"
-    "    center4：第 3～6 行，每行只取第 3～6 个数（4 行 × 4 个）；\n"
-    "    center6：第 2～7 行，每行去掉第一个和最后一个数（6 行 × 6 个）。\n"
+    "（1）由外向内一层一层剥掉最外一圈，原样抄出三个区块，每个区块按行写成二维数组：\n"
+    "    center6：去掉步骤矩阵的第 1 行和第 8 行，剩下 6 行每行再去掉第一个和最后一个数（6 行 × 6 个）；\n"
+    "    center4：对 center6 做同样的操作，去掉它的第一行和最后一行，剩下 4 行每行去掉首尾各一个数（4 行 × 4 个）；\n"
+    "    center2：对 center4 再做一次同样的操作（2 行 × 2 个）。\n"
     "（2）在你抄出的 center2、center4、center6 里分别找出最大的数，记为 M1、M2、M3；它们必须是区块里实际出现的数。\n"
     "（3）三个区块分别有 4、16、36 颗螺栓。只有当 M1、M2、M3 恰好依次等于 4、16、36 时，每一层才都在外层之前完成，合规。\n"
     "（4）否则，对每个最大数超出螺栓数的区块，区块外面所有比该区块最大数小的数都是违规步。\n"
@@ -64,13 +71,13 @@ RULES = (
 )
 
 VERDICT_FIELDS = (
-    "blocks：{\"center2\": 2 行 × 2 个数, \"center4\": 4 行 × 4 个数, \"center6\": 6 行 × 6 个数}，按检查方法（1）从步骤矩阵原样抄出；\n"
+    "blocks：{\"center6\": [[6 个数], …共 6 行], \"center4\": [[4 个数], …共 4 行], \"center2\": [[2 个数], [2 个数]]}，按检查方法（1）依次抄出；\n"
     "block_max：[M1, M2, M3]，分别是你抄出的 center2、center4、center6 里最大的数；\n"
     "verdict：合规、不合规或无法判断，三选一；\n"
     "first_violation_step：首次违规的步骤（整数），合规时为 null；\n"
     "first_violation_coordinate：首次违规步所在格子的坐标，第 r 行第 c 列的坐标是 (10c, 10r)，用 [x, y] 数组表示，合规时为 null；\n"
     "reason：一句话说明判断依据，不超过 80 字。\n"
-    "字段请按以上顺序输出：先抄 blocks，再写 block_max，最后下结论。"
+    "字段请按以上顺序输出：先抄 blocks，再写 block_max，最后下结论。输出完这个 JSON 对象就结束，不要再附加解释、检查或修正。"
 )
 
 def cells_template() -> str:
@@ -94,7 +101,8 @@ def format_coords(coords: Sequence[Sequence[int]]) -> str:
 
 
 def format_matrix(matrix: Sequence[Sequence[int]]) -> str:
-    return "\n".join("[" + ", ".join(str(v) for v in row) + "]" for row in matrix)
+    """每行前标出行号（提示词 v1.6 起），便于按行剥圈。"""
+    return "\n".join(f"第{r}行：[" + ", ".join(str(v) for v in row) + "]" for r, row in enumerate(matrix, start=1))
 
 
 def _sequence_block(coords: Sequence[Sequence[int]]) -> str:
@@ -132,8 +140,8 @@ def response_schema(group: str) -> dict:
 
     blocks = {
         "type": "object",
-        "properties": {"center2": square(2), "center4": square(4), "center6": square(6)},
-        "required": ["center2", "center4", "center6"],
+        "properties": {"center6": square(6), "center4": square(4), "center2": square(2)},
+        "required": ["center6", "center4", "center2"],
         "additionalProperties": False,
     }
     verdict = {

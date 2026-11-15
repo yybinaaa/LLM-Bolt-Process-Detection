@@ -38,6 +38,11 @@ def _cells(matrix: list) -> dict:
     return {f"({10 * (c + 1)},{10 * (r + 1)})": matrix[r][c] for r in range(8) for c in range(8)}
 
 
+def _blocks_outer_first(blocks: dict | None) -> dict | None:
+    """提示词 v1.6 按 center6 → center4 → center2 的顺序抄写区块。"""
+    return {k: blocks[k] for k in ("center6", "center4", "center2")} if blocks else None
+
+
 def _answer_json(
     group: str, matrix: list | None, verdict: str | None, step: int | None, coord: list | None,
     block_max: list | None = None,
@@ -50,7 +55,7 @@ def _answer_json(
     if group in ("joint", "judge"):
         obj.update(
             {
-                "blocks": blocks if blocks is not None else (block_slices(matrix) if matrix else None),
+                "blocks": _blocks_outer_first(blocks if blocks is not None else (block_slices(matrix) if matrix else None)),
                 "block_max": block_max,
                 "verdict": verdict,
                 "first_violation_step": step,
