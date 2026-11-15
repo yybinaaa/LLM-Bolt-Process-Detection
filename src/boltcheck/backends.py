@@ -45,8 +45,7 @@ def _answer_json(
     """按提示词 v1.3 的字段顺序生成模拟回复。"""
     obj: dict = {}
     if group in ("joint", "restore"):
-        obj["cells"] = _cells(matrix) if matrix else None
-        obj["order_matrix"] = matrix
+        obj["cells"] = _cells(matrix) if matrix else None  # v1.4：只填 64 格，矩阵由程序排
     if group in ("joint", "judge"):
         obj.update(
             {
@@ -126,7 +125,9 @@ class OpenAICompatBackend:
         timeout_s: float = 600,
         retries: int = 3,
         seed: int | None = None,
+        structured: bool = False,
     ):
+        self.structured = structured  # True 时按调用的组附上 JSON Schema（response_format），只约束格式
         self.url = base_url.rstrip("/") + "/chat/completions"
         host = urllib.parse.urlparse(self.url).hostname or ""
         # 本地 vLLM 不走系统代理，避免设置了 HTTP_PROXY 时请求被转发出去
@@ -162,6 +163,13 @@ class OpenAICompatBackend:
 
     def generate(self, prompt: str, sample: dict, group: str, repeat: int) -> Generation:
         body = {"model": self.model, "messages": [{"role": "user", "content": prompt}], **self.params}
+        if self.structured:
+            from boltcheck.prompts import response_schema
+
+            body["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": f"boltcheck_{group}", "schema": response_schema(group), "strict": True},
+            }
         if self.seed is not None:
             body["seed"] = self.seed + repeat
         last_err = None
@@ -195,6 +203,7 @@ class OpenAICompatBackend:
 
 def build_openai_backend(model_cfg: dict, profile: dict) -> OpenAICompatBackend:
     params = {**profile.get("params", {}), **model_cfg.get("params_override", {})}
+    structured = bool(profile.get("structured_output", False))
     for key in model_cfg.get("drop_params", []):
         params.pop(key, None)
     key_env = model_cfg.get("api_key_env") or ""
@@ -209,4 +218,5 @@ def build_openai_backend(model_cfg: dict, profile: dict) -> OpenAICompatBackend:
         timeout_s=model_cfg.get("timeout_s", 600),
         retries=model_cfg.get("retries", 3),
         seed=profile.get("seed"),
+        structured=structured,
     )

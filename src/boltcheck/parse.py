@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from boltcheck.grid import N_BOLTS, is_matrix_shape, is_valid_coord, is_valid_matrix
+from boltcheck.grid import N_BOLTS, coord_of, is_matrix_shape, is_valid_coord, is_valid_matrix
 
 VERDICTS = ("合规", "不合规", "无法判断")
 
@@ -26,7 +26,8 @@ class Parsed:
     first_step: int | None = None
     first_coord: list[int] | None = None
     step_layers: list[int] | None = None  # 提示词 v1.2 要求输出；不影响格式有效性，单独统计
-    cells: dict | None = None  # 提示词 v1.3 复原时先写的逐格清单 {(x, y): 步数}；不影响格式有效性
+    cells: dict | None = None  # 逐格清单 {(x, y): 步数}；v1.4 起由它排出 matrix
+    cells_lenient: dict | None = None  # JSON 写坏时用宽松提取得到的逐格清单，只用于辅助指标
     block_max: list[int] | None = None  # 提示词 v1.3 判断时写的三个区块最大数；不影响格式有效性
     format_valid: bool = False
     errors: list[str] = field(default_factory=list)
@@ -89,6 +90,24 @@ def _as_layers(v: Any) -> list[int] | None:
     return out  # type: ignore[return-value]
 
 
+_PAIR_RE = re.compile(r'"\(?\s*(\d+)\s*,\s*(\d+)\s*\)?"\s*:\s*(\d+)')
+
+
+def lenient_cells(text: str) -> dict | None:
+    """不管 JSON 是否合法，抠出所有 "(x,y)": 步数 形式的项（同一坐标取第一次出现），只用于辅助指标。"""
+    body = strip_thinking(text)
+    out: dict = {}
+    for x, y, k in _PAIR_RE.findall(body):
+        xy = (int(x), int(y))
+        if is_valid_coord(xy):
+            out.setdefault(xy, int(k))
+    return out or None
+
+
+def cells_to_matrix(cells: dict) -> list[list[int]]:
+    return [[cells[coord_of(r, c)] for c in range(1, 9)] for r in range(1, 9)]
+
+
 def _as_cells(v: Any) -> dict | None:
     """逐格清单：键为坐标字符串（如 "(10,10)"），值为步数；只保留能解析的项，一项都没有则视为没给。"""
     if not isinstance(v, dict):
@@ -117,6 +136,8 @@ def _as_coord(v: Any) -> list[int] | None:
 
 def parse_output(text: str, group: str) -> Parsed:
     p = Parsed()
+    if group in ("joint", "restore"):
+        p.cells_lenient = lenient_cells(text or "")
     obj, err = extract_json(text)
     if obj is None:
         p.errors.append(err or "解析失败")
@@ -124,15 +145,25 @@ def parse_output(text: str, group: str) -> Parsed:
     p.obj = obj
 
     if group in ("joint", "restore"):
-        m = obj.get("order_matrix")
+        p.cells = _as_cells(obj.get("cells"))
+        if p.cells and all(coord_of(r, c) in p.cells for r in range(1, 9) for c in range(1, 9)):
+            # v1.4 起：由程序按坐标把逐格清单排成 8×8 矩阵（只排版，不做判断）
+            m = cells_to_matrix(p.cells)
+            source = "cells"
+        else:
+            m = obj.get("order_matrix")  # 兼容 v1.1～v1.3 的回复
+            source = "order_matrix"
         p.matrix = m if isinstance(m, list) else None
         p.matrix_shape_ok = is_matrix_shape(m)
         p.matrix_valid = is_valid_matrix(m)
-        p.cells = _as_cells(obj.get("cells"))
         if not p.matrix_shape_ok:
-            p.errors.append("order_matrix 不是 8×8 整数矩阵")
+            if p.cells:
+                missing = sum(coord_of(r, c) not in p.cells for r in range(1, 9) for c in range(1, 9))
+                p.errors.append(f"cells 缺少 {missing} 个格子")
+            else:
+                p.errors.append("没有可用的 cells 或 order_matrix")
         elif not p.matrix_valid:
-            p.errors.append(f"order_matrix 没有恰好包含 1～{N_BOLTS}")
+            p.errors.append(f"{source} 没有恰好包含 1～{N_BOLTS}")
 
     if group in ("joint", "judge"):
         v = obj.get("verdict")

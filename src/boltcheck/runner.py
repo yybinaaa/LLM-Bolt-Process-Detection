@@ -143,6 +143,7 @@ def resolve_backend(backend: str, models_config: str | None, model: str | None, 
         "repeats": prof.get("repeats", 1),
         "seed": prof.get("seed"),
         "params": be.params,
+        "structured_output": be.structured,
     }
     return be, info
 

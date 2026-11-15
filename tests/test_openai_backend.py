@@ -130,3 +130,23 @@ def test_running_guide_matches_models_config():
     cfg = load_config(os.path.join(root, "configs", "models.toml"))
     local = {m["model"] for m in cfg["models"].values() if "localhost" in m["base_url"]}
     assert served == local
+
+
+def test_structured_output_sends_schema(server):
+    """greedy-json：按调用的组附上 JSON Schema；restore 的 cells 要求正好 64 个格子、按格子顺序。"""
+    from boltcheck.prompts import response_schema
+
+    be = build_openai_backend({"base_url": server, "model": "m"}, {"structured_output": True, "params": {"temperature": 0.0}})
+    be.generate("p", {"id": "x"}, "restore", 0)
+    rf = FakeVLLM.requests[-1]["body"]["response_format"]
+    assert rf["type"] == "json_schema"
+    cells = rf["json_schema"]["schema"]["properties"]["cells"]
+    assert len(cells["required"]) == 64 and cells["required"][:2] == ["(10,10)", "(20,10)"]
+    be.generate("p", {"id": "x"}, "judge", 0)
+    judge = FakeVLLM.requests[-1]["body"]["response_format"]["json_schema"]["schema"]
+    assert list(judge["properties"])[:2] == ["block_max", "verdict"]
+    assert "structured_output" not in FakeVLLM.requests[-1]["body"]
+    assert set(response_schema("joint")["properties"]) >= {"cells", "block_max", "verdict"}
+    plain = build_openai_backend({"base_url": server, "model": "m"}, {"params": {}})
+    plain.generate("p", {"id": "x"}, "restore", 0)
+    assert "response_format" not in FakeVLLM.requests[-1]["body"]
