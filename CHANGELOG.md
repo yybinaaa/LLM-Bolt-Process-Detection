@@ -2,6 +2,12 @@
 
 本文件记录实验方案、数据集与代码的重要变更，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。方案正文以 `docs/experiment-plan.md` 为准，逐行改动可在 Git 提交记录中查看。版本规则见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
+## [未发布]
+
+### 新增
+
+- 登记 Qwen3-4B-Instruct-2507 INT4 的提示词 v1.2 两阶段试跑（5 条，运行 20261115-184124_pipeline_qwen3-4b-instruct-2507-int4_greedy），附原始结果、查看器与 GitHub 实验归档链接；说明代码 0.5.0 的判断计分口径，该记录为试跑。
+
 ## [代码 0.5.0] - 2026-11-15
 
 对应方案 v1.6、提示词 v1.2。
