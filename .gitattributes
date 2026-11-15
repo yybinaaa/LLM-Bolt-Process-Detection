@@ -1,0 +1,2 @@
+# Keep registered dataset bytes identical across Windows and Linux checkouts.
+*.jsonl text eol=lf

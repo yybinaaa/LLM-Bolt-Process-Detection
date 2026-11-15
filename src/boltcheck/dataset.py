@@ -215,7 +215,7 @@ def write_dataset(records: list[dict], cfg: dict, out_dir: str | Path) -> dict:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     text = dumps_jsonl(records)
-    (out / "dataset.jsonl").write_text(text, encoding="utf-8")
+    (out / "dataset.jsonl").write_text(text, encoding="utf-8", newline="\n")
     manifest = {
         "dataset_version": cfg["version"],
         "generator_version": __version__,
