@@ -145,11 +145,12 @@ def score_row(sample: dict, out: dict | None, group: str) -> dict:
             ref_max = block_maxima(ref_shape)
             row["block_acc"] = sum(a == b for a, b in zip(p.block_max, ref_max)) / 3
             row["block_whole_ok"] = p.block_max == ref_max
-        if ref_shape is not None and p.blocks is not None:  # 提示词 v1.5：抄写的 56 个数是否与矩阵一致
+        if ref_shape is not None and p.blocks is not None:  # 提示词 v1.5 起：抄写的 56 个数是否与矩阵一致；形状不对的区块按全错计
             want = block_slices(ref_shape)
-            pairs = [(a, b) for k in BLOCK_KEYS for ra, rb in zip(p.blocks[k], want[k]) for a, b in zip(ra, rb)]
-            row["block_copy_acc"] = sum(a == b for a, b in pairs) / len(pairs)
-        if p.blocks is not None and p.block_max is not None:  # 写出的最大数是否来自自己抄的区块（区分抄错与照搬"应有值"）
+            hits = sum(a == b for k in BLOCK_KEYS if k in p.blocks
+                       for ra, rb in zip(p.blocks[k], want[k]) for a, b in zip(ra, rb))
+            row["block_copy_acc"] = hits / 56
+        if p.blocks is not None and len(p.blocks) == 3 and p.block_max is not None:  # 最大数是否来自自己抄的区块（区分抄错与照搬"应有值"）
             row["block_max_copy_consistent"] = p.block_max == [max(max(r) for r in p.blocks[k]) for k in BLOCK_KEYS]
         if ref is not None and p.step_layers is not None:
             ref_layers = judge_matrix(ref).layers

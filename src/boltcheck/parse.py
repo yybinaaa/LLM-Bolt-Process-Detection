@@ -128,19 +128,22 @@ def _as_cells(v: Any) -> dict | None:
 
 
 def _as_blocks(v: Any) -> dict | None:
-    """三个区块的抄写结果；每个区块必须是 n 行 × n 个整数（n = 2、4、6），否则整体视为没给。"""
+    """三个区块的抄写结果；每个区块是 n 行 × n 个整数（n = 2、4、6），也接受按行摊平的 n² 个数（提示词 v1.5 试跑中出现）。
+    只保留形状正确的区块；一个都没有则视为没给。"""
     if not isinstance(v, dict):
         return None
     out = {}
     for key, n in (("center2", 2), ("center4", 4), ("center6", 6)):
         rows = v.get(key)
+        if isinstance(rows, list) and len(rows) == n * n and not any(isinstance(x, list) for x in rows):
+            rows = [rows[i * n:(i + 1) * n] for i in range(n)]
         if not (isinstance(rows, list) and len(rows) == n and all(isinstance(r, list) and len(r) == n for r in rows)):
-            return None
+            continue
         vals = [[_as_int(x) for x in r] for r in rows]
         if any(x is None for r in vals for x in r):
-            return None
+            continue
         out[key] = vals
-    return out
+    return out or None
 
 
 def _as_coord(v: Any) -> list[int] | None:

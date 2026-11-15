@@ -162,16 +162,37 @@ def test_prompt_v14_content():
     assert "中心 2×2" in j and j.index("block_max：") < j.index("verdict：")
 
 
-def test_prompt_v15_judge_copies_blocks():
-    """提示词 v1.5：判断前先从矩阵按行抄出三个区块，block_max 取自抄出的区块。"""
+def test_prompt_v16_judge_peels_blocks():
+    """提示词 v1.6：矩阵每行标出行号；由外向内逐层剥圈抄出区块（center6 → center4 → center2），block_max 取自所抄区块。"""
     from boltcheck.prompts import PROMPT_VERSION, build_judge_prompt
 
-    assert PROMPT_VERSION == "v1.5"
-    j = build_judge_prompt(VIOLATING["order_matrix"])
+    assert PROMPT_VERSION == "v1.6"
+    m = VIOLATING["order_matrix"]
+    j = build_judge_prompt(m)
+    assert f"第1行：[{', '.join(map(str, m[0]))}]" in j and "第8行：" in j
     assert j.index("blocks：") < j.index("block_max：") < j.index("verdict：")
-    assert "center6：第 2～7 行，每行去掉第一个和最后一个数" in j and "实际出现的数" in j
-    assert "若 M1 = 4" not in j  # 不再把"应有值"写成可以直接照抄的等式
+    assert "去掉步骤矩阵的第 1 行和第 8 行" in j and "对 center6 做同样的操作" in j and "实际出现的数" in j
+    assert j.index('"center6"') < j.index('"center4"') < j.index('"center2"')
+    assert "若 M1 = 4" not in j and "不要再附加解释" in j
     assert "blocks：" in build_prompt("joint", VIOLATING)
+
+
+def test_flat_blocks_are_reshaped():
+    """v1.5 试跑中模型把区块摊平成一维；长度正确时按行还原后统计，长度不对视为没给。"""
+    from boltcheck.parse import _as_blocks
+    from boltcheck.rules import block_slices
+
+    b = block_slices(VIOLATING["order_matrix"])
+    flat = {k: [x for row in v for x in row] for k, v in b.items()}
+    assert _as_blocks(flat) == b
+    flat["center4"] = flat["center4"][:-1]
+    assert set(_as_blocks(flat)) == {"center2", "center6"}  # 只保留形状正确的区块
+    assert _as_blocks({"center2": [1, 2, 3], "center4": [], "center6": None}) is None
+    s = VIOLATING
+    obj = {"blocks": flat, "block_max": [1, 2, 3], "verdict": s["verdict"], "first_violation_step": s["first_violation_step"],
+           "first_violation_coordinate": s["first_violation_coordinate"], "reason": ""}
+    row = score_row(s, {"text": json.dumps(obj, ensure_ascii=False)}, "judge")
+    assert row["block_copy_acc"] == 40 / 56 and "block_max_copy_consistent" not in row  # 缺的 4×4 区块按全错计
 
 
 def test_block_copy_metrics():
