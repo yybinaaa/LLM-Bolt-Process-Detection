@@ -24,3 +24,5 @@ jobs:
         run: boltcheck verify-data data/v1.1
       - name: 程序规则基线端到端
         run: boltcheck run --backend baseline --group joint --out /tmp/runs
+      - name: 检查自动试跑清单
+        run: boltcheck pilot --dry-run

@@ -102,6 +102,22 @@ curl http://localhost:8000/v1/models
 
 ## 6. 正式运行
 
+### 自动试跑（本地定时任务用）
+
+试跑清单写在 `configs/pilot.toml`：固定的 8 条样本（合规、不合规各 4 条），以及这一轮要跑的组和配置。清单由 Claude 根据上一轮结果调整，本地只需在 main 更新后执行：
+
+```bash
+git pull
+boltcheck pilot --dry-run        # 只列出将要运行的各项，不调用模型
+boltcheck pilot --gpu-monitor    # 依次运行并评测，最后打印每项的运行目录和实验日志行
+```
+
+某一项失败（例如 vLLM 不支持结构化输出）时会记下错误、继续下一项，命令最后以非零状态退出。每个运行目录照常归档（Release ZIP + exp PR）；同一轮的几个运行可以放在一个 exp PR 里。显存请另外记下启动 vLLM 前后的 `nvidia-smi` 读数，写进 PR 说明。
+
+`boltcheck run` 也可以用 `--ids` 指定样本，例如 `--ids v1.1-0001 v1.1-0005`。
+
+### 手动运行
+
 建议顺序：
 
 1. 先试跑 5 条，看原始回复是否正常：

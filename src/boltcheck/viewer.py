@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from boltcheck.dataset import load_dataset
+from boltcheck.dataset import load_dataset, select_samples
 from boltcheck.grid import as_coords, layer_grid
 from boltcheck.rules import violation_steps
 
@@ -53,9 +53,7 @@ def run_view_data(run_dir: str | Path) -> dict:
     run_dir = Path(run_dir)
     meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
     group = meta["group"]
-    samples = load_dataset(meta["dataset"]["path"])
-    if meta.get("limit"):
-        samples = samples[: meta["limit"]]
+    samples = select_samples(load_dataset(meta["dataset"]["path"]), meta.get("limit"), meta.get("ids"))
     outputs: dict = {}
     out_path = run_dir / "outputs.jsonl"
     if out_path.exists():
@@ -87,6 +85,8 @@ def run_view_data(run_dir: str | Path) -> dict:
                 "layerAcc": row.get("layer_acc"),
                 "blockMax": p.block_max if p else None,
                 "blockOk": row.get("block_whole_ok"),
+                "blockCopy": row.get("block_copy_acc"),
+                "blockFromCopy": row.get("block_max_copy_consistent"),
                 "cellsAcc": row.get("cells_acc"),
             })
         item["model"] = reps
@@ -324,6 +324,8 @@ function card(it) {
       if (r.attribution) badges.push(`<span class="tag">${NAMES[r.attribution]}</span>`);
       let layerInfo = r.layerAcc == null ? "" : `；层级标注对 ${Math.round(r.layerAcc * 64)}/64`;
       if (r.blockMax) layerInfo += `；区块最大数 [${r.blockMax.join(", ")}]${r.blockOk === true ? "（正确）" : r.blockOk === false ? "（有误）" : ""}`;
+      if (r.blockCopy != null) layerInfo += `；区块抄写 ${(r.blockCopy * 100).toFixed(0)}%`;
+      if (r.blockFromCopy === false) layerInfo += "（最大数不是取自所抄区块）";
       const cellsInfo = r.cellsAcc == null ? "" : `<div class="info">逐格清单对 ${Math.round(r.cellsAcc * 64)}/64</div>`;
       const showGrid = DATA.group !== "judge";
       const mLabel = isPipe ? "第一步，模型复原" : (DATA.group === "judge" ? "模型判断" : "模型复原");

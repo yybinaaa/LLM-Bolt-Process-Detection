@@ -17,7 +17,7 @@ import urllib.request
 from dataclasses import asdict, dataclass
 
 from boltcheck.grid import transpose
-from boltcheck.rules import block_maxima, judge_matrix
+from boltcheck.rules import block_maxima, block_slices, judge_matrix
 
 
 @dataclass
@@ -41,14 +41,16 @@ def _cells(matrix: list) -> dict:
 def _answer_json(
     group: str, matrix: list | None, verdict: str | None, step: int | None, coord: list | None,
     block_max: list | None = None,
+    blocks: dict | None = None,
 ) -> str:
-    """按提示词 v1.3 的字段顺序生成模拟回复。"""
+    """按提示词 v1.5 的字段顺序生成模拟回复。"""
     obj: dict = {}
     if group in ("joint", "restore"):
         obj["cells"] = _cells(matrix) if matrix else None  # v1.4：只填 64 格，矩阵由程序排
     if group in ("joint", "judge"):
         obj.update(
             {
+                "blocks": blocks if blocks is not None else (block_slices(matrix) if matrix else None),
                 "block_max": block_max,
                 "verdict": verdict,
                 "first_violation_step": step,
@@ -99,6 +101,10 @@ class NoisyBackend:
         j = judge_matrix(matrix)
         verdict, step, coord = j.verdict, j.first_violation_step, j.first_violation_coordinate
         bmax = block_maxima(matrix)
+        blocks = block_slices(matrix)
+        if rng.random() < 0.10:  # 模拟区块抄错一个数
+            r, c = rng.randrange(6), rng.randrange(6)
+            blocks["center6"][r][c] += 1
         if rng.random() < 0.15:  # 模拟区块最大数写错一个
             k = rng.randrange(3)
             bmax[k] += rng.choice([-1, 1])
@@ -110,7 +116,7 @@ class NoisyBackend:
                 verdict, step, coord = "不合规", rng.randint(5, 36), None
             else:
                 verdict, step, coord = "合规", None, None
-        return Generation(text=_answer_json(group, matrix, verdict, step, coord, bmax), finish_reason="stop", latency_s=0.01)
+        return Generation(text=_answer_json(group, matrix, verdict, step, coord, bmax, blocks), finish_reason="stop", latency_s=0.01)
 
 
 class OpenAICompatBackend:

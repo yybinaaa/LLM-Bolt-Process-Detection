@@ -30,6 +30,7 @@ class Parsed:
     cells_lenient: dict | None = None  # JSON 写坏时用宽松提取得到的逐格清单，只用于辅助指标
     cells_order_ok: bool = True  # 方案 v1.9：cells 必须按模板的格子顺序（逐行、从左到右）填写
     block_max: list[int] | None = None  # 提示词 v1.3 判断时写的三个区块最大数；不影响格式有效性
+    blocks: dict | None = None  # 提示词 v1.5 判断时抄出的三个区块 {"center2": 2×2, ...}；形状不对视为没给，不影响格式有效性
     format_valid: bool = False
     errors: list[str] = field(default_factory=list)
 
@@ -126,6 +127,22 @@ def _as_cells(v: Any) -> dict | None:
     return out or None
 
 
+def _as_blocks(v: Any) -> dict | None:
+    """三个区块的抄写结果；每个区块必须是 n 行 × n 个整数（n = 2、4、6），否则整体视为没给。"""
+    if not isinstance(v, dict):
+        return None
+    out = {}
+    for key, n in (("center2", 2), ("center4", 4), ("center6", 6)):
+        rows = v.get(key)
+        if not (isinstance(rows, list) and len(rows) == n and all(isinstance(r, list) and len(r) == n for r in rows)):
+            return None
+        vals = [[_as_int(x) for x in r] for r in rows]
+        if any(x is None for r in vals for x in r):
+            return None
+        out[key] = vals
+    return out
+
+
 def _as_coord(v: Any) -> list[int] | None:
     if isinstance(v, (list, tuple)) and len(v) == 2:
         xy = [_as_int(t) for t in v]
@@ -185,6 +202,7 @@ def parse_output(text: str, group: str) -> Parsed:
         p.first_step = _as_int(obj.get("first_violation_step"))
         p.first_coord = _as_coord(obj.get("first_violation_coordinate"))
         p.step_layers = _as_layers(obj.get("step_layers"))
+        p.blocks = _as_blocks(obj.get("blocks"))
         bm = obj.get("block_max")
         if isinstance(bm, list) and len(bm) == 3 and all(_as_int(v) is not None for v in bm):
             p.block_max = [_as_int(v) for v in bm]  # type: ignore[misc]

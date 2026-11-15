@@ -144,7 +144,9 @@ def test_structured_output_sends_schema(server):
     assert len(cells["required"]) == 64 and cells["required"][:2] == ["(10,10)", "(20,10)"]
     be.generate("p", {"id": "x"}, "judge", 0)
     judge = FakeVLLM.requests[-1]["body"]["response_format"]["json_schema"]["schema"]
-    assert list(judge["properties"])[:2] == ["block_max", "verdict"]
+    assert list(judge["properties"])[:3] == ["blocks", "block_max", "verdict"]  # 提示词 v1.5：先抄区块
+    center6 = judge["properties"]["blocks"]["properties"]["center6"]
+    assert center6["minItems"] == center6["maxItems"] == 6 and center6["items"]["maxItems"] == 6
     assert "structured_output" not in FakeVLLM.requests[-1]["body"]
     assert set(response_schema("joint")["properties"]) >= {"cells", "block_max", "verdict"}
     plain = build_openai_backend({"base_url": server, "model": "m"}, {"params": {}})

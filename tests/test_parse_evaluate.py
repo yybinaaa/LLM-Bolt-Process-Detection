@@ -147,9 +147,9 @@ def test_pipeline_two_stage_calls_and_metrics(tmp_path):
 
 
 def test_prompt_v14_content():
-    from boltcheck.prompts import PROMPT_VERSION, build_judge_prompt, cells_template
+    """复原部分自 v1.4 起不变：64 格填空模板。"""
+    from boltcheck.prompts import build_judge_prompt, cells_template
 
-    assert PROMPT_VERSION == "v1.4"
     s = VIOLATING
     p = build_prompt("restore", s)
     x, y = s["coords"][0]
@@ -160,6 +160,50 @@ def test_prompt_v14_content():
     assert cells_template().count(": ?") == 64
     j = build_judge_prompt(s["order_matrix"])
     assert "中心 2×2" in j and j.index("block_max：") < j.index("verdict：")
+
+
+def test_prompt_v15_judge_copies_blocks():
+    """提示词 v1.5：判断前先从矩阵按行抄出三个区块，block_max 取自抄出的区块。"""
+    from boltcheck.prompts import PROMPT_VERSION, build_judge_prompt
+
+    assert PROMPT_VERSION == "v1.5"
+    j = build_judge_prompt(VIOLATING["order_matrix"])
+    assert j.index("blocks：") < j.index("block_max：") < j.index("verdict：")
+    assert "center6：第 2～7 行，每行去掉第一个和最后一个数" in j and "实际出现的数" in j
+    assert "若 M1 = 4" not in j  # 不再把"应有值"写成可以直接照抄的等式
+    assert "blocks：" in build_prompt("joint", VIOLATING)
+
+
+def test_block_copy_metrics():
+    """区块抄写准确率、最大数是否来自所抄区块；第 5 组矩阵不是 1～64 的排列时，区块类指标也照常统计。"""
+    from boltcheck.rules import block_maxima, block_slices
+
+    s = VIOLATING
+    m = s["order_matrix"]
+    blocks = block_slices(m)
+    assert blocks["center2"] == [[m[3][3], m[3][4]], [m[4][3], m[4][4]]]
+    assert [max(max(r) for r in blocks[k]) for k in ("center2", "center4", "center6")] == block_maxima(m)
+    obj = {"blocks": blocks, "block_max": block_maxima(m), "verdict": s["verdict"],
+           "first_violation_step": s["first_violation_step"], "first_violation_coordinate": s["first_violation_coordinate"], "reason": ""}
+    row = score_row(s, {"text": json.dumps(obj, ensure_ascii=False)}, "judge")
+    assert row["block_copy_acc"] == 1.0 and row["block_max_copy_consistent"] and row["block_whole_ok"]
+    # 抄对了区块却照搬 [4, 16, 36]：最大数与所抄区块不一致
+    obj["block_max"] = [4, 16, 36]
+    row = score_row(s, {"text": json.dumps(obj, ensure_ascii=False)}, "judge")
+    assert row["block_copy_acc"] == 1.0 and not row["block_max_copy_consistent"] and not row["block_whole_ok"]
+    # 区块形状不对视为没给，不影响格式有效性
+    obj["blocks"] = {"center2": [[1, 2]], "center4": [], "center6": []}
+    row = score_row(s, {"text": json.dumps(obj, ensure_ascii=False)}, "judge")
+    assert "block_copy_acc" not in row and row["format_valid"]
+    # 第 5 组：第一阶段矩阵有重复（不是排列），区块类指标仍与该矩阵比较
+    bad = [r[:] for r in m]
+    bad[0][0] = bad[0][1]
+    cells = {f"({10 * (c + 1)},{10 * (r + 1)})": bad[r][c] for r in range(8) for c in range(8)}
+    stage2 = {"blocks": block_slices(bad), "block_max": block_maxima(bad), "verdict": "合规",
+              "first_violation_step": None, "first_violation_coordinate": None, "reason": ""}
+    out = {"stage1": {"text": json.dumps({"cells": cells})}, "stage2": {"text": json.dumps(stage2, ensure_ascii=False)}, "error": None}
+    row = score_row(s, out, "pipeline")
+    assert not row["format_valid"] and row["block_whole_ok"] and row["block_copy_acc"] == 1.0
     jt = build_prompt("joint", s)
     assert jt.index('"(80,80)": ?') < jt.index("block_max：") < jt.index("verdict：")
 

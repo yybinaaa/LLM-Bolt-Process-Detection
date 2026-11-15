@@ -80,6 +80,14 @@ def block_maxima(matrix: Sequence[Sequence[int]]) -> list[int]:
     return [max(matrix[r - 1][c - 1] for r in rows for c in rows) for _, rows, _ in BLOCKS]
 
 
+BLOCK_KEYS = ("center2", "center4", "center6")  # 提示词 v1.5 中模型抄写区块用的字段名，依次对应 BLOCKS
+
+
+def block_slices(matrix: Sequence[Sequence[int]]) -> dict[str, list[list[int]]]:
+    """三个区块按行原样取出：center2 为第 4～5 行第 4～5 列，center4 为第 3～6 行第 3～6 列，center6 为第 2～7 行第 2～7 列。"""
+    return {key: [[matrix[r - 1][c - 1] for c in rows] for r in rows] for key, (_, rows, _) in zip(BLOCK_KEYS, BLOCKS)}
+
+
 def block_check(matrix: Sequence[Sequence[int]]) -> list[int]:
     """按区块找违规步：区块外比该区块最大数小的数都是违规步。结果与 violation_steps 等价（测试验证）。"""
     found: set[int] = set()

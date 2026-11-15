@@ -7,6 +7,7 @@
   view         生成网页查看器（数据集，或某次运行的标准答案与模型复原对比）
   run          调用模型跑一组对照，结束后自动评测
   evaluate     重新评测一个运行目录
+  pilot        按 configs/pilot.toml 依次跑完自动试跑清单（本地定时任务用）
 """
 
 from __future__ import annotations
@@ -101,17 +102,19 @@ def _cmd_run(a) -> int:
             meta["backend"], meta.get("models_config"), meta.get("model"), meta.get("profile"), a.noisy_seed
         )
         group, data, limit, repeats = meta["group"], meta["dataset"]["path"], meta.get("limit"), meta["repeats"]
+        ids = meta.get("ids")
     else:
         if not a.group:
             print("需要 --group（joint / restore / judge / pipeline）")
             return 2
         backend, info = resolve_backend(a.backend, a.models_config, a.model, a.profile, a.noisy_seed)
         group, data, limit, repeats = a.group, a.data, a.limit, a.repeats
+        ids = a.ids
     if hasattr(backend, "check") and not a.skip_check:
         backend.check()
     run_dir = run_experiment(
         data, group, backend, info,
-        out_root=a.out, limit=limit, repeats=repeats, resume_dir=a.resume,
+        out_root=a.out, limit=limit, repeats=repeats, resume_dir=a.resume, ids=ids,
         gpu_monitor=a.gpu_monitor, workers=a.workers, note=a.note,
     )
     metrics = evaluate_run(run_dir)
@@ -130,6 +133,29 @@ def _cmd_evaluate(a) -> int:
         print(Path(d, "report.md").read_text(encoding="utf-8"))
         print(Path(d, "log_row.md").read_text(encoding="utf-8"))
     return 0
+
+
+def _cmd_pilot(a) -> int:
+    from boltcheck.runner import load_pilot, run_pilot
+
+    if a.dry_run:
+        cfg = load_pilot(a.config)
+        print(f"样本：{', '.join(cfg.get('ids') or []) or '全部'}" + (f"（limit={cfg['limit']}）" if cfg.get("limit") else ""))
+        for i, r in enumerate(cfg["runs"], start=1):
+            print(f"{i}. --group {r['group']} --model {r.get('model', cfg.get('model'))} --profile {r.get('profile')}  # {r.get('purpose', '')}")
+        return 0
+    results = run_pilot(a.config, a.models_config, a.data, a.out, a.gpu_monitor, a.skip_check)
+    print("\n本次自动试跑：")
+    for res in results:
+        if res.get("error"):
+            print(f"- 第 {res['index']} 项（{res['group']} · {res['profile']}）失败：{res['error']}")
+        else:
+            print(f"- 第 {res['index']} 项：{res['run_dir']}")
+    print("\n实验日志行：")
+    for res in results:
+        if res.get("log_row"):
+            print(res["log_row"])
+    return 1 if any(res.get("error") for res in results) else 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -174,6 +200,7 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--profile", help="configs/models.toml 中的采样配置名")
     r.add_argument("--data", default="data/v1.1")
     r.add_argument("--limit", type=int, help="只跑前 N 条（试跑用）")
+    r.add_argument("--ids", nargs="+", help="只跑这些样本（保持数据集中的顺序），可与 --limit 同用")
     r.add_argument("--repeats", type=int, help="覆盖配置中的重复次数")
     r.add_argument("--workers", type=int, default=1, help="并发请求数，默认 1（便于逐条记录显存）")
     r.add_argument("--gpu-monitor", action="store_true", help="用 nvidia-smi 记录峰值显存")
@@ -183,6 +210,16 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--noisy-seed", type=int, default=0)
     r.add_argument("--skip-check", action="store_true", help="跳过运行前的服务连通性检查")
     r.set_defaults(func=_cmd_run)
+
+    pl = sub.add_parser("pilot", help="按清单依次运行自动试跑（本地定时任务用）")
+    pl.add_argument("--config", default="configs/pilot.toml")
+    pl.add_argument("--models-config", default="configs/models.toml")
+    pl.add_argument("--data", default="data/v1.1")
+    pl.add_argument("--out", default="runs")
+    pl.add_argument("--gpu-monitor", action="store_true", help="用 nvidia-smi 记录峰值显存")
+    pl.add_argument("--skip-check", action="store_true", help="跳过运行前的服务连通性检查")
+    pl.add_argument("--dry-run", action="store_true", help="只列出将要运行的各项，不调用模型")
+    pl.set_defaults(func=_cmd_pilot)
 
     e = sub.add_parser("evaluate", help="重新评测运行目录")
     e.add_argument("run_dirs", nargs="+")
