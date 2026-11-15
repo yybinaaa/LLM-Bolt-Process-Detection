@@ -2,6 +2,18 @@
 
 本文件记录实验方案、数据集与代码的重要变更，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。方案正文以 `docs/experiment-plan.md` 为准，逐行改动可在 Git 提交记录中查看。版本规则见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
+## [未发布]
+
+### 新增
+
+- 登记 Qwen3-4B-Instruct-2507 INT4 的第 5 组两阶段试跑（5 条样本），保留报告、原始输出和查看器的 GitHub 实验归档链接；该记录明确标注为试跑，不作为正式实验结论。
+
+### 修复
+
+- 数据集生成时固定使用 LF 换行，确保 Windows 下生成文件的 SHA-256 与 manifest 一致，生成后可立即通过校验。
+- Git 检出 JSONL 文件时保留 LF 换行，避免已登记数据集因平台换行转换而校验失败。
+- 增加生成、写入与校验的往返测试，覆盖 Windows 上的文件哈希一致性。
+
 ## [代码 0.4.1] - 2026-11-15
 
 ### 修改
