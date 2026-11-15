@@ -1,0 +1,25 @@
+# 数据集 v1.1（对应实验方案 v1.1 第五节）
+# 修改任何参数都应生成新的数据版本目录，不要覆盖已登记过实验的数据。
+
+version = "v1.1"
+seed = 20261115
+n_compliant = 100
+min_per_group = 20      # 每个分组维度的每个取值不少于 20 条
+min_boundary_hard = 20  # 边界难例不少于 20 条
+max_attempts = 20000    # 单条样本的最大尝试次数，超过即报错
+
+[methods]               # 不合规样本按构造方式分配，合计 100
+swap = 34
+insert = 33
+block = 33
+
+[targets]               # 每种构造方式中定向生成的样本数，其余随机生成
+boundary = 7            # 边界难例：单处扰动、相邻层、发生在层交界附近
+cross = 8               # 跨层距离 2~3
+back = 8                # 首次违规在后段（第 17~36 步）
+
+[perturb]
+extra_min = 1           # 多处扰动时，在第一处之外再做 1~2 处
+extra_max = 2
+block_k_min = 2         # 整段提前的段长
+block_k_max = 6
