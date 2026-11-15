@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-第一版实验：以模拟坐标代替目标检测结果，验证文字大模型能否还原 8×8 螺栓节点的初拧顺序，并按"由中间向四周"的分层规则判断是否合规。本地主测模型为 Qwen3-4B-Instruct-2507（INT4），对比 Phi-4-mini-instruct（INT4）和 Qwen3-1.7B（INT8，含思考模式）。
+第一版实验：以模拟坐标代替目标检测结果，验证文字大模型能否还原 8×8 螺栓节点的初拧顺序，并按"由中间向四周"的分层规则判断是否合规。本地主测模型为 Qwen3-4B-Instruct-2507（INT4），对比 Phi-4-mini-instruct（INT4）和 Qwen3-1.7B（INT8，含思考模式）。判断流程的主线是第 5 组：模型先把坐标复原成标好安装顺序的 8×8 表格，再按这张表对照规则判断。
 
 ## 快速开始
 
@@ -27,8 +27,8 @@ boltcheck run --model qwen3-4b-instruct-2507-int4 --profile greedy --group joint
 
 ## 文档
 
-- [实验方案](docs/experiment-plan.md)：当前版本 v1.3，修改历史见 Git 提交记录
-- Word 版本：[v1.3](docs/experiment-plan-v1.3.docx)（当前）、[v1.2](docs/experiment-plan-v1.2.docx)、[v1.1](docs/experiment-plan-v1.1.docx)、[v1.0](docs/experiment-plan-v1.0.docx)（原稿）
+- [实验方案](docs/experiment-plan.md)：当前版本 v1.4，修改历史见 Git 提交记录
+- Word 版本：[v1.4](docs/experiment-plan-v1.4.docx)（当前）、[v1.3](docs/experiment-plan-v1.3.docx)、[v1.2](docs/experiment-plan-v1.2.docx)、[v1.1](docs/experiment-plan-v1.1.docx)、[v1.0](docs/experiment-plan-v1.0.docx)（原稿）
 - [本地运行指南](docs/running.md)
 - [实验日志](docs/experiment-log.md)：正式实验结果登记
 - [迭代规范](CONTRIBUTING.md)：版本号、分支、提交信息、实验登记
