@@ -26,6 +26,7 @@ METRIC_NAMES = {
     "matrix_transposed_rate": "转置矩阵比例",
     "cells_acc": "逐格清单准确率",
     "cells_acc_lenient": "逐格清单准确率（宽松提取，辅助）",
+    "cells_order_violation_rate": "cells 未按模板顺序的比例",
     "verdict_acc": "合规判断准确率",
     "detection_rate": "违规检出率",
     "false_alarm_rate": "合规误报率",
@@ -78,15 +79,15 @@ def parse_record(out: dict | None, group: str) -> Parsed:
     if stage2 is None:
         return Parsed(
             matrix=p1.matrix, matrix_shape_ok=p1.matrix_shape_ok, matrix_valid=p1.matrix_valid, cells=p1.cells,
-            cells_lenient=p1.cells_lenient, errors=[f"复原：{e}" for e in p1.errors] + ["第一阶段没有得到 8×8 矩阵，未进行判断"],
+            cells_lenient=p1.cells_lenient, cells_order_ok=p1.cells_order_ok, errors=[f"复原：{e}" for e in p1.errors] + ["第一阶段没有得到 8×8 矩阵，未进行判断"],
         )
     p2 = parse_output(stage2.get("text") or "", "judge")
     return Parsed(
         obj=p2.obj, matrix=p1.matrix, matrix_shape_ok=p1.matrix_shape_ok, matrix_valid=p1.matrix_valid, cells=p1.cells,
-        cells_lenient=p1.cells_lenient,
+        cells_lenient=p1.cells_lenient, cells_order_ok=p1.cells_order_ok,
         verdict=p2.verdict, verdict_valid=p2.verdict_valid, first_step=p2.first_step, first_coord=p2.first_coord,
         step_layers=p2.step_layers, block_max=p2.block_max,
-        format_valid=p1.matrix_valid and p2.format_valid,
+        format_valid=p1.format_valid and p2.format_valid,
         errors=[f"复原：{e}" for e in p1.errors] + [f"判断：{e}" for e in p2.errors],
     )
 
@@ -120,6 +121,8 @@ def score_row(sample: dict, out: dict | None, group: str) -> dict:
             row["cell_acc"] = 0.0
         row["whole_ok"] = p.matrix_shape_ok and p.matrix == truth_m
         row["transposed"] = p.matrix_shape_ok and p.matrix == transpose(truth_m)
+        if p.cells is not None and len(p.cells) == 64:
+            row["cells_order_ok"] = p.cells_order_ok
         if p.cells is not None:
             row["cells_acc"] = sum(p.cells.get(coord_of(r + 1, c + 1)) == truth_m[r][c] for r in range(8) for c in range(8)) / 64
         if p.cells_lenient is not None:  # JSON 写坏时也统计内容，只作辅助参考，不影响格式有效性
@@ -171,6 +174,8 @@ def compute_metrics(rows: list[dict], group: str) -> dict:
         if any("cells_acc" in r or "cells_acc_lenient" in r for r in rows):  # 只有要求输出 cells 的提示词（v1.3 起）才统计；没给按 0 计
             m["cells_acc"] = _mean([r.get("cells_acc", 0.0) for r in rows])
             m["cells_acc_lenient"] = _mean([r.get("cells_acc_lenient", 0.0) for r in rows])
+        if any("cells_order_ok" in r for r in rows):  # 分母只算给齐 64 格的样本
+            m["cells_order_violation_rate"] = _mean([not r["cells_order_ok"] for r in rows if "cells_order_ok" in r])
     if group in VERDICT_GROUPS:
         nc = [r for r in rows if not r["compliant"]]
         cp = [r for r in rows if r["compliant"]]

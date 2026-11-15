@@ -80,7 +80,11 @@ def test_baseline_run_scores_perfectly(tmp_path, group):
     run_dir = run_experiment(str(DATA), group, BaselineBackend(), info, out_root=str(tmp_path), log=lambda *_: None)
     m = evaluate_run(run_dir)
     for key, v in m["summary"].items():
-        if key in ("n", "api_error_rate", "truncated_rate", "matrix_transposed_rate", "false_alarm_rate", "unable_rate"):
+        if key == "n":
+            continue
+        if key in ("api_error_rate", "truncated_rate", "matrix_transposed_rate", "false_alarm_rate", "unable_rate",
+                   "cells_order_violation_rate"):
+            assert v is None or v["mean"] == 0.0, key  # 这些是"越低越好"的比例
             continue
         if v is None:  # 例如"复原错误时的判断准确率"：基线没有复原错误的样本
             continue
@@ -230,6 +234,39 @@ def test_invalid_pipeline_output_counts_as_wrong():
     row = score_row(s, out, "pipeline")
     assert not row["format_valid"]
     assert row["verdict"] is None and not row["verdict_ok"] and not row["conclusion_ok"] and not row["coord_ok"]
+
+
+def test_cells_must_follow_template_order(tmp_path):
+    """方案 v1.9：cells 内容正确但照输入的时间顺序抄写（没有复原）时，记为格式无效；按模板顺序则有效。"""
+    s = VIOLATING
+    echo = {f"({x},{y})": k for k, (x, y) in enumerate(s["coords"], start=1)}  # 逐行照抄输入
+    assert list(echo) != [f"({10 * c},{10 * r})" for r in range(1, 9) for c in range(1, 9)]
+    p = parse_output(json.dumps({"cells": echo}), "restore")
+    assert p.matrix == s["order_matrix"]  # 内容其实是对的，矩阵仍排出来供诊断
+    assert not p.cells_order_ok and not p.format_valid and "模板的格子顺序" in "".join(p.errors)
+    row = score_row(s, {"text": json.dumps({"cells": echo})}, "restore")
+    assert row["cells_order_ok"] is False and row["cells_acc"] == 1.0 and not row["format_valid"]
+    # 第 5 组：第一阶段顺序不对，第二阶段结论即便正确也按答错计
+    out = {
+        "stage1": {"text": json.dumps({"cells": echo})},
+        "stage2": {"text": answer(None, s["verdict"], s["first_violation_step"], s["first_violation_coordinate"])},
+        "error": None,
+    }
+    row = score_row(s, out, "pipeline")
+    assert not row["format_valid"] and row["verdict"] is None and not row["verdict_ok"]
+    # 第 2 组同样适用
+    obj = {"cells": echo, "verdict": s["verdict"], "first_violation_step": s["first_violation_step"],
+           "first_violation_coordinate": s["first_violation_coordinate"], "reason": ""}
+    assert not parse_output(json.dumps(obj, ensure_ascii=False), "joint").format_valid
+    # 按模板顺序填写则有效；基线跑出的报告里顺序违规比例为 0
+    m = s["order_matrix"]
+    raster = {f"({10 * (c + 1)},{10 * (r + 1)})": m[r][c] for r in range(8) for c in range(8)}
+    p = parse_output(json.dumps({"cells": raster}), "restore")
+    assert p.cells_order_ok and p.format_valid
+    info = {"backend": "baseline", "model": "baseline", "profile": "-", "repeats": 1, "params": {}}
+    run_dir = run_experiment(str(DATA), "restore", BaselineBackend(), info, out_root=str(tmp_path), limit=5, log=lambda *_: None)
+    summary = evaluate_run(run_dir)["summary"]
+    assert summary["cells_order_violation_rate"]["mean"] == 0.0
 
 
 def test_gpu_monitor_peaks():

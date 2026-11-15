@@ -28,6 +28,7 @@ class Parsed:
     step_layers: list[int] | None = None  # 提示词 v1.2 要求输出；不影响格式有效性，单独统计
     cells: dict | None = None  # 逐格清单 {(x, y): 步数}；v1.4 起由它排出 matrix
     cells_lenient: dict | None = None  # JSON 写坏时用宽松提取得到的逐格清单，只用于辅助指标
+    cells_order_ok: bool = True  # 方案 v1.9：cells 必须按模板的格子顺序（逐行、从左到右）填写
     block_max: list[int] | None = None  # 提示词 v1.3 判断时写的三个区块最大数；不影响格式有效性
     format_valid: bool = False
     errors: list[str] = field(default_factory=list)
@@ -104,6 +105,10 @@ def lenient_cells(text: str) -> dict | None:
     return out or None
 
 
+# 模板里 64 个格子的顺序：第 1 行从左到右，再第 2 行……（与 prompts.cells_template 一致）
+RASTER_ORDER = [coord_of(r, c) for r in range(1, 9) for c in range(1, 9)]
+
+
 def cells_to_matrix(cells: dict) -> list[list[int]]:
     return [[cells[coord_of(r, c)] for c in range(1, 9)] for r in range(1, 9)]
 
@@ -150,6 +155,9 @@ def parse_output(text: str, group: str) -> Parsed:
             # v1.4 起：由程序按坐标把逐格清单排成 8×8 矩阵（只排版，不做判断）
             m = cells_to_matrix(p.cells)
             source = "cells"
+            # 方案 v1.9：程序只按坐标排版，所以必须要求模型沿模板顺序逐格填写；
+            # 若改成照输入的时间顺序抄写，“复原”就被程序代劳了，这种输出记为格式无效
+            p.cells_order_ok = list(p.cells) == RASTER_ORDER
         else:
             m = obj.get("order_matrix")  # 兼容 v1.1～v1.3 的回复
             source = "order_matrix"
@@ -164,6 +172,8 @@ def parse_output(text: str, group: str) -> Parsed:
                 p.errors.append("没有可用的 cells 或 order_matrix")
         elif not p.matrix_valid:
             p.errors.append(f"{source} 没有恰好包含 1～{N_BOLTS}")
+        if not p.cells_order_ok:
+            p.errors.append("cells 没有按模板的格子顺序（逐行、从左到右）填写")
 
     if group in ("joint", "judge"):
         v = obj.get("verdict")
@@ -182,7 +192,7 @@ def parse_output(text: str, group: str) -> Parsed:
             p.errors.append("判为不合规但 first_violation_step 不是 1～64 的整数")
 
     if group == "restore":
-        p.format_valid = p.matrix_valid
+        p.format_valid = p.matrix_valid and p.cells_order_ok
     elif group == "judge":
         p.format_valid = not p.errors
     else:
