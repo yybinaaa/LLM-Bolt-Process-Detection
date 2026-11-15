@@ -12,7 +12,6 @@ from pathlib import Path
 
 from boltcheck.dataset import load_dataset
 from boltcheck.grid import as_coords, layer_grid
-from boltcheck.parse import parse_output
 from boltcheck.rules import violation_steps
 
 LAYERS = layer_grid()
@@ -49,7 +48,7 @@ def dataset_view_data(data_dir: str | Path, ids: list[str] | None = None) -> dic
 
 
 def run_view_data(run_dir: str | Path) -> dict:
-    from boltcheck.evaluate import score_row
+    from boltcheck.evaluate import parse_record, score_row
 
     run_dir = Path(run_dir)
     meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
@@ -72,7 +71,7 @@ def run_view_data(run_dir: str | Path) -> dict:
         for rep in range(meta.get("repeats", 1)):
             out = outputs.get((s["id"], rep))
             row = score_row(s, out, group)
-            p = parse_output(out["text"], group) if out and not out.get("error") else None
+            p = parse_record(out, group) if out and not out.get("error") else None
             reps.append({
                 "repeat": rep,
                 "m": p.matrix if p and p.matrix_shape_ok else None,
@@ -166,18 +165,19 @@ h1{font-size:19px;font-weight:600;margin:0}
 .legend{display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:12px;color:var(--muted);margin-top:8px}
 .sw{display:inline-block;width:14px;height:14px;border:1px solid var(--line);border-radius:3px;vertical-align:-3px;margin-right:4px}
 main{padding:18px 24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:16px}
-main.run{grid-template-columns:repeat(auto-fill,minmax(700px,1fr))}
+main.run{grid-template-columns:repeat(auto-fill,minmax(720px,1fr))}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
 .top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .id{font-weight:600;font-size:14px;font-variant-numeric:tabular-nums}
 .tag{font-size:12px;padding:1px 8px;border-radius:10px;background:#eef1f5;color:var(--muted)}
 .tag.bad{background:var(--badbg);color:var(--bad)}.tag.ok{background:var(--okbg);color:var(--ok)}.tag.warn{background:var(--warnbg);color:var(--warn)}
 .info{font-size:12px;color:var(--muted);margin:6px 0 8px;line-height:1.6}
-.grids{display:flex;gap:18px;flex-wrap:wrap}
-.gwrap h3{font-size:12px;font-weight:600;margin:0 0 4px;color:var(--muted)}
+.grids{display:flex;gap:14px;flex-wrap:wrap}
+.gwrap{max-width:350px}
+.gwrap h3{font-size:12px;font-weight:600;margin:0 0 4px;color:var(--muted);line-height:1.9}
 table.g{border-collapse:separate;border-spacing:2px;font-variant-numeric:tabular-nums}
 table.g th{font-size:10px;font-weight:400;color:var(--muted);padding:0 2px;text-align:center}
-table.g td{width:36px;height:30px;text-align:center;font-size:13px;border:1px solid var(--line);border-radius:4px;position:relative;transition:opacity .12s}
+table.g td{width:34px;height:30px;text-align:center;font-size:13px;border:1px solid var(--line);border-radius:4px;position:relative;transition:opacity .12s}
 table.g td.v{color:var(--bad);font-weight:700}
 table.g td.f{outline:2.5px solid var(--bad);outline-offset:-2px}
 table.g td.wrong{background:var(--badbg)!important;color:var(--bad);font-weight:700}
@@ -308,7 +308,9 @@ function card(it) {
   if (isRun) {
     const draw = rep => {
       const r = it.model[rep];
-      const verdict = r.verdict ? `模型结论：${r.verdict}${r.verdict === "不合规" && r.step ? `，首次违规第 ${r.step} 步` : ""}` : "模型结论：—";
+      const isPipe = DATA.group === "pipeline";
+      const vLabel = isPipe ? "第二步，模型按自己复原的表格判断：" : "模型结论：";
+      const verdict = r.verdict ? `${vLabel}${r.verdict}${r.verdict === "不合规" && r.step ? `，首次违规第 ${r.step} 步（红框）` : ""}` : `${vLabel}—`;
       const badges = [];
       if (!r.formatValid) badges.push(`<span class="tag bad">格式无效</span>`);
       if (r.verdictOk === false || r.conclusionOk === false) badges.push(`<span class="tag bad">判断错误</span>`);
@@ -317,8 +319,10 @@ function card(it) {
       if (r.transposed) badges.push(`<span class="tag warn">行列写反</span>`);
       if (r.attribution) badges.push(`<span class="tag">${NAMES[r.attribution]}</span>`);
       const showGrid = DATA.group !== "judge";
-      $(".model", el).innerHTML = `<h3>模型复原 ${badges.join(" ")}</h3>` +
-        (showGrid ? (r.m ? gridHTML(r.m, {truth: it.m}) : `<div class="info">没有可解析的 8×8 矩阵：${(r.errors || []).join("；")}</div>`) : "") +
+      const mLabel = isPipe ? "第一步，模型复原" : (DATA.group === "judge" ? "模型判断" : "模型复原");
+      const claimed = r.verdict === "不合规" ? r.step : null;
+      $(".model", el).innerHTML = `<h3>${mLabel} ${badges.join(" ")}</h3>` +
+        (showGrid ? (r.m ? gridHTML(r.m, {truth: it.m, first: claimed}) : `<div class="info">没有可解析的 8×8 矩阵：${(r.errors || []).join("；")}</div>`) : "") +
         `<div class="info">${DATA.group !== "restore" ? verdict : ""}</div>`;
       applyStep(el, +$("input[type=range]", el).value);
     };

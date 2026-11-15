@@ -10,7 +10,11 @@ GROUPS = {
     "joint": "第 2 组：联合任务（还原矩阵 + 合规判断）",
     "restore": "第 3 组：仅做还原",
     "judge": "第 4 组：仅做判断（给出标准步骤矩阵）",
+    "pipeline": "第 5 组：两阶段（先复原，再按自己复原的矩阵判断）",
 }
+
+# 第 5 组两次调用分别使用的提示词组：第一阶段同第 3 组，第二阶段同第 4 组（矩阵换成模型自己复原的）
+PIPELINE_STAGES = ("restore", "judge")
 
 COORD_DESC = (
     "节点是一个 8×8 的规则螺栓阵列，共 64 颗螺栓。\n"
@@ -45,6 +49,18 @@ def format_matrix(matrix: Sequence[Sequence[int]]) -> str:
     return "\n".join("[" + ", ".join(str(v) for v in row) + "]" for row in matrix)
 
 
+def build_judge_prompt(matrix: Sequence[Sequence[int]]) -> str:
+    """第 4 组，以及第 5 组第二阶段（矩阵为模型自己复原的）共用的判断提示词。"""
+    return (
+        f"{COORD_DESC}\n"
+        f"下面是 8×8 步骤矩阵，每个格子是该位置的初拧步数。{MATRIX_CONVENTION}。\n"
+        f"{format_matrix(matrix)}\n"
+        f"{RULES}\n"
+        "请只输出一个 JSON 对象，包含以下字段：\n"
+        f"{VERDICT_FIELDS}"
+    )
+
+
 def build_prompt(group: str, sample: dict) -> str:
     if group == "joint":
         return (
@@ -65,12 +81,7 @@ def build_prompt(group: str, sample: dict) -> str:
             f"order_matrix：8×8 步骤矩阵，每个格子填该位置的操作步数。{MATRIX_CONVENTION}。"
         )
     if group == "judge":
-        return (
-            f"{COORD_DESC}\n"
-            f"下面是 8×8 步骤矩阵，每个格子是该位置的初拧步数。{MATRIX_CONVENTION}。\n"
-            f"{format_matrix(sample['order_matrix'])}\n"
-            f"{RULES}\n"
-            "请只输出一个 JSON 对象，包含以下字段：\n"
-            f"{VERDICT_FIELDS}"
-        )
+        return build_judge_prompt(sample["order_matrix"])
+    if group == "pipeline":
+        return build_prompt("restore", sample)  # 第一阶段；第二阶段用 build_judge_prompt(模型复原的矩阵)
     raise ValueError(f"未知的对照组: {group}（可选 {', '.join(GROUPS)}）")

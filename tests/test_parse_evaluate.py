@@ -82,6 +82,8 @@ def test_baseline_run_scores_perfectly(tmp_path, group):
     for key, v in m["summary"].items():
         if key in ("n", "api_error_rate", "truncated_rate", "matrix_transposed_rate", "false_alarm_rate", "unable_rate"):
             continue
+        if v is None:  # 例如"复原错误时的判断准确率"：基线没有复原错误的样本
+            continue
         assert v["mean"] == 1.0, key
     assert (run_dir / "report.md").exists() and (run_dir / "log_row.md").exists()
 
@@ -105,3 +107,36 @@ def test_resume_only_reruns_missing(tmp_path):
     run_experiment(str(DATA), "joint", Counting(), info, limit=20, resume_dir=str(run_dir), log=lambda *_: None)
     assert len(calls) == 11
     assert evaluate_run(run_dir)["n_outputs_found"] == 20
+
+
+def test_pipeline_two_stage_calls_and_metrics(tmp_path):
+    """第 5 组：每条样本两次调用；第二阶段拿到的是第一阶段复原的矩阵；第一阶段失败时不调用第二阶段。"""
+    calls = []
+
+    class Recording(NoisyBackend):
+        def generate(self, prompt, sample, group, repeat):
+            calls.append((sample["id"], group, prompt))
+            return super().generate(prompt, sample, group, repeat)
+
+    info = {"backend": "noisy", "model": "noisy", "profile": "-", "repeats": 1, "params": {}}
+    run_dir = run_experiment(str(DATA), "pipeline", Recording(), info, out_root=str(tmp_path), limit=40, log=lambda *_: None)
+    recs = [json.loads(l) for l in (run_dir / "outputs.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert len(recs) == 40
+    for rec in recs:
+        stages = [c for c in calls if c[0] == rec["sample_id"]]
+        assert stages[0][1] == "restore" and "操作序列" in stages[0][2]
+        if rec["stage2"] is None:
+            assert len(stages) == 1  # 第一阶段没得到矩阵，不做判断
+        else:
+            assert len(stages) == 2 and stages[1][1] == "judge"
+            m1 = parse_output(rec["stage1"]["text"], "restore").matrix
+            assert all(str(row)[1:-1] in stages[1][2] for row in m1)  # 判断提示词里是模型自己复原的矩阵
+            assert "操作序列" not in stages[1][2]
+    assert any(r["stage2"] is None for r in recs)
+    m = evaluate_run(run_dir)
+    s = m["summary"]
+    for key in ("matrix_whole_acc", "verdict_acc", "self_consistency_rate", "acc_when_matrix_ok", "acc_when_matrix_wrong"):
+        assert s[key] is not None, key
+    assert sum(m["attribution"].values()) > 0
+    data_view = (run_dir / "view.html").read_text(encoding="utf-8")
+    assert "第 5 组" in data_view

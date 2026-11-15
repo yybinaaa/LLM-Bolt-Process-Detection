@@ -57,7 +57,13 @@ def _cmd_show_prompt(a) -> int:
     if sample is None:
         print(f"找不到样本 {a.id}")
         return 1
-    print(build_prompt(a.group, sample))
+    if a.group == "pipeline":
+        from boltcheck.prompts import build_judge_prompt
+
+        print("【第一阶段：复原】\n" + build_prompt("restore", sample))
+        print("\n【第二阶段：判断】矩阵为模型第一阶段复原的结果，下面用标准答案示意：\n" + build_judge_prompt(sample["order_matrix"]))
+    else:
+        print(build_prompt(a.group, sample))
     return 0
 
 
@@ -97,7 +103,7 @@ def _cmd_run(a) -> int:
         group, data, limit, repeats = meta["group"], meta["dataset"]["path"], meta.get("limit"), meta["repeats"]
     else:
         if not a.group:
-            print("需要 --group（joint / restore / judge）")
+            print("需要 --group（joint / restore / judge / pipeline）")
             return 2
         backend, info = resolve_backend(a.backend, a.models_config, a.model, a.profile, a.noisy_seed)
         group, data, limit, repeats = a.group, a.data, a.limit, a.repeats
@@ -143,7 +149,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("show-prompt", help="打印提示词")
     s.add_argument("--data", default="data/v1.1")
-    s.add_argument("--group", default="joint", choices=["joint", "restore", "judge"])
+    s.add_argument("--group", default="joint", choices=["joint", "restore", "judge", "pipeline"])
     s.add_argument("--id", help="样本 ID，默认第一条")
     s.set_defaults(func=_cmd_show_prompt)
 
@@ -160,7 +166,7 @@ def build_parser() -> argparse.ArgumentParser:
     vw.set_defaults(func=_cmd_view)
 
     r = sub.add_parser("run", help="跑一组对照并评测")
-    r.add_argument("--group", choices=["joint", "restore", "judge"], help="joint=第2组 restore=第3组 judge=第4组")
+    r.add_argument("--group", choices=["joint", "restore", "judge", "pipeline"], help="joint=第2组 restore=第3组 judge=第4组 pipeline=第5组（先复原再判断）")
     r.add_argument("--backend", default="openai", choices=["openai", "baseline", "noisy"],
                    help="baseline=第1组程序规则基线；noisy=模拟错误输出，用于检查评测")
     r.add_argument("--models-config", default="configs/models.toml")
