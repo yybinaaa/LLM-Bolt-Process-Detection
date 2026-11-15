@@ -30,7 +30,7 @@ class GpuMonitor:
     """定时调用 nvidia-smi 记录显存占用（MiB，所有 GPU 求和）。
 
     注意：vLLM 启动时按 --gpu-memory-utilization 预分配显存，这里记录的是进程实际占用的总量，
-    主要用于确认是否在 8GB 内，不等于模型推理的最小需求。
+    主要用于确认服务没有超出显存预算（3～5GB），不等于模型推理的最小需求。
     """
 
     def __init__(self, interval_s: float = 0.5):
@@ -116,6 +116,8 @@ def resolve_backend(backend: str, models_config: str | None, model: str | None, 
         "models_config": str(models_config),
         "model": model,
         "served_model": model_cfg["model"],
+        "hf_repo": model_cfg.get("hf_repo"),
+        "quantization": model_cfg.get("quantization"),
         "base_url": model_cfg["base_url"],
         "profile": profile,
         "repeats": prof.get("repeats", 1),

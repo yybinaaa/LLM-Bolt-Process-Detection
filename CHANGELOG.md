@@ -2,6 +2,34 @@
 
 本文件记录实验方案、数据集与代码的重要变更，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。方案正文以 `docs/experiment-plan.md` 为准，逐行改动可在 Git 提交记录中查看。版本规则见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
+## [代码 0.2.0] - 2026-11-15
+
+对应方案 v1.3。
+
+### 修改
+
+- `configs/models.toml`：改为三个纯文本模型——Qwen3-4B-Instruct-2507 INT4（主测）、Phi-4-mini-instruct INT4（跨家族对比）、Qwen3-1.7B INT8（低配档与思考模式对比），另有可选的 Qwen3-1.7B 原精度做量化对照；移除 Qwen3-VL 两个模型。
+- 采样配置改为 `greedy`、`sampled`、`thinking` 三套，按 Qwen3 模型卡设置；`enable_thinking` 显式写入每套配置。
+- 运行指南：每个模型给出限制在 5GB 以内的 vllm serve 命令（`--gpu-memory-utilization 0.6`、`--enforce-eager`）。
+
+### 新增
+
+- 模型配置增加 `hf_repo` 和 `quantization` 字段，写入 `meta.json` 和运行报告，便于登记权重来源与量化方式。
+- 测试：模型配置自洽检查；运行指南中的 `--served-model-name` 与配置一致性检查（共 27 项）。
+
+## [方案 v1.3] - 2026-11-15
+
+### 修改
+
+- 第七节：改用纯文本大模型；部署约束改为推理服务显存 3～5GB（开发机 8GB，用 vLLM 限制在 5GB 以内并实测）。
+- 第七节：主测 Qwen3-4B-Instruct-2507（INT4），跨家族对比 Phi-4-mini-instruct（INT4），低配档与思考模式对比 Qwen3-1.7B（INT8，同一模型内置思考开关，恢复 v1.1"思考开 / 关"的设计）；可选 Qwen3-1.7B 原精度做量化对照。Qwen3-4B-Thinking-2507 因推理缓存放不进 5GB，本版不测。
+- 第七节：说明各模型 INT4 量化方法不同，跨模型比较时需注意并在日志中注明。
+- 第九节：新增"统一量化方法，系统比较 INT4、INT8 与原精度"；"接入目标检测或视觉大模型"改为"接入目标检测，把检测结果作为坐标输入大模型"。
+
+### 未变
+
+- 第一至六节、第八节；数据集仍为 v1.1，提示词版本仍为 v1.1。
+
 ## [代码 0.1.0] - 2026-11-15
 
 实现方案 v1.2 的完整实验流水线。

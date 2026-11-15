@@ -1,63 +1,91 @@
-# 模型与运行配置（方案 v1.2 第七节）
+# 模型与运行配置（方案 v1.3 第七节）
 # run 命令：boltcheck run --model <模型名> --profile <配置名> --group <组>
-# params 会原样放进 OpenAI 兼容接口的请求体（vLLM 支持 top_k 等扩展字段）。
+# params 会原样放进 OpenAI 兼容接口的请求体（vLLM 支持 top_k、chat_template_kwargs 等扩展字段）。
 #
-# Qwen3-VL 的 Instruct 版本没有思考开关，思考模式是单独的 Thinking 模型，
-# 因此"思考模式开 / 关"对比通过换模型实现：2B-Instruct 对比 2B-Thinking。
+# 部署约束：推理服务显存 3～5GB。每个模型对应的 vllm serve 命令见 docs/running.md。
+# hf_repo / quantization 只用于记录（写入 meta.json），实际加载哪个模型由 vllm serve 决定。
 
 # ---------- 采样配置 ----------
 
 [profiles.greedy]
-# 方案：非思考模式温度 0，每条样本跑 1 次。
-# 注意：Qwen3-VL 模型卡的推荐配置都不使用贪心解码；若试跑出现大量重复或截断，
-# 改用 instruct-sampled，并在实验日志中注明。
+# 方案：非思考模式，温度 0，每条样本跑 1 次。
+# enable_thinking = false 只对 Qwen3-1.7B 这类带思考开关的模型起作用，其他模型的模板会忽略它。
 repeats = 1
 seed = 1234
 [profiles.greedy.params]
 temperature = 0.0
 max_tokens = 2048
+chat_template_kwargs = { enable_thinking = false }
 
-[profiles.instruct-sampled]
-# 备选：Qwen3-VL Instruct 模型卡的纯文本采样参数（temperature 1.0、top_p 1.0、top_k 40），跑 3 次。
-# 模型卡纯文本建议 presence_penalty = 2.0；本任务要输出大量重复的数字和逗号，默认取 0，可作为消融项。
+[profiles.sampled]
+# 备选：Qwen3 模型卡推荐的非思考采样参数（temperature 0.7、top_p 0.8、top_k 20），跑 3 次。
+# 模型卡建议出现无限重复时加 presence_penalty；本任务要输出大量重复的数字和逗号，默认取 0，可作为消融项。
 repeats = 3
-seed = 3407
-[profiles.instruct-sampled.params]
-temperature = 1.0
-top_p = 1.0
-top_k = 40
+seed = 1234
+[profiles.sampled.params]
+temperature = 0.7
+top_p = 0.8
+top_k = 20
+min_p = 0.0
 presence_penalty = 0.0
 max_tokens = 2048
+chat_template_kwargs = { enable_thinking = false }
 
 [profiles.thinking]
-# 思考模型：Qwen3-VL 官方评测中 Thinking 模型的采样参数，每条样本跑 3 次。
+# 思考模式：Qwen3 模型卡推荐参数（temperature 0.6、top_p 0.95、top_k 20，不用贪心解码），跑 3 次。
 repeats = 3
 seed = 1234
 [profiles.thinking.params]
 temperature = 0.6
 top_p = 0.95
 top_k = 20
+min_p = 0.0
 presence_penalty = 0.0
 max_tokens = 16384
+chat_template_kwargs = { enable_thinking = true }
 
 # ---------- 模型 ----------
-# 8GB 显存一次只起一个本地模型，所以两个本地模型共用同一个端口。
+# 一次只起一个本地模型，所有本地模型共用 8000 端口；model 必须与 vllm serve 的 --served-model-name 一致。
 
-[models."qwen3-vl-2b-instruct"]
-# 本地主测
+[models."qwen3-4b-instruct-2507-int4"]
+# 本地主测，预估约 4～4.5GB
 base_url = "http://localhost:8000/v1"
-model = "qwen3-vl-2b-instruct"      # 与 vllm serve 的 --served-model-name 保持一致
-api_key_env = ""                    # 本地 vLLM 不需要密钥
+model = "qwen3-4b-instruct-2507-int4"
+hf_repo = "cyankiwi/Qwen3-4B-Instruct-2507-AWQ-4bit"
+quantization = "INT4 AWQ（W4A16，社区量化版）"
+api_key_env = ""
 timeout_s = 600
-profiles = ["greedy", "instruct-sampled"]
+profiles = ["greedy", "sampled"]
 
-[models."qwen3-vl-2b-thinking"]
-# 思考模式对比；vllm serve 时加 --reasoning-parser qwen3
+[models."phi-4-mini-instruct-int4"]
+# 跨家族对比，预估约 4～4.5GB
 base_url = "http://localhost:8000/v1"
-model = "qwen3-vl-2b-thinking"
+model = "phi-4-mini-instruct-int4"
+hf_repo = "microsoft/Phi-4-mini-instruct"
+quantization = "INT4 bitsandbytes（vLLM 加载时量化）"
+api_key_env = ""
+timeout_s = 600
+profiles = ["greedy", "sampled"]
+
+[models."qwen3-1.7b-int8"]
+# 低配档与思考模式对比；同一个服务既能跑非思考（greedy / sampled）也能跑思考（thinking）
+base_url = "http://localhost:8000/v1"
+model = "qwen3-1.7b-int8"
+hf_repo = "Qwen/Qwen3-1.7B-GPTQ-Int8"
+quantization = "INT8 GPTQ（官方量化版）"
 api_key_env = ""
 timeout_s = 1200
-profiles = ["thinking"]
+profiles = ["greedy", "sampled", "thinking"]
+
+[models."qwen3-1.7b-bf16"]
+# 可选：量化影响对照，与 qwen3-1.7b-int8 比较；只跑非思考模式，预估约 4.5GB
+base_url = "http://localhost:8000/v1"
+model = "qwen3-1.7b-bf16"
+hf_repo = "Qwen/Qwen3-1.7B"
+quantization = "BF16（原精度）"
+api_key_env = ""
+timeout_s = 600
+profiles = ["greedy", "sampled"]
 
 [models.api-reference]
 # 能力上限参考（型号待定）。填好 base_url 和 model，并设置环境变量 LLM_API_KEY。
@@ -65,5 +93,6 @@ base_url = "https://api.example.com/v1"
 model = "待定"
 api_key_env = "LLM_API_KEY"
 timeout_s = 900
+profiles = ["greedy", "sampled"]
 # 远程 API 通常不认识 vLLM 的扩展字段，发送前去掉
-drop_params = ["top_k"]
+drop_params = ["chat_template_kwargs", "top_k", "min_p"]
