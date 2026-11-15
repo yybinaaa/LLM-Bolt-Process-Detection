@@ -26,14 +26,25 @@ boltcheck show-prompt --group joint --id v1.1-0001 # 看看发给模型的提示
 
 `data/v1.1/dataset.jsonl` 每行一条样本，`manifest.json` 记录生成配置、哈希和各分组的样本数。
 
-## 3. 不用 GPU 先跑通流水线
+## 3. 直观查看样本
+
+把坐标序列展开成 8×8 表格，每格标上安装顺序（第几步）。
+
+```bash
+boltcheck show-sample v1.1-0005 v1.1-0008   # 在终端打印表格：* 违规步，! 首次违规步，下方附层级表
+boltcheck view                              # 生成 data/v1.1/view.html，用浏览器打开
+```
+
+网页查看器里每条样本是一张 8×8 表格：底色深浅表示层级（中心深、外圈浅），红字是违规步，红框是首次违规步；拖动下方滑块或点"播放"，可以看到螺栓按顺序一颗颗拧上去。可以按结论、构造方式、跨层距离、首次违规位置、边界难例筛选。
+
+## 4. 不用 GPU 先跑通流水线
 
 ```bash
 boltcheck run --backend baseline --group joint     # 第 1 组：程序规则基线，所有准确率应为 100%
 boltcheck run --backend noisy --group joint        # 模拟各种错误输出，看看报告长什么样
 ```
 
-## 4. 启动模型服务
+## 5. 启动模型服务
 
 部署约束是推理服务显存 3～5GB。开发机是 8GB 显卡，下面的命令都用 `--gpu-memory-utilization 0.6`（8GB × 0.6 ≈ 4.8GB）把 vLLM 限制在 5GB 以内；放不下指定的上下文长度时，vLLM 启动就会报错，相当于一次硬性检验。`--enforce-eager` 关闭 CUDA Graph，能省几百 MB 显存，代价是稍慢。
 
@@ -87,7 +98,7 @@ vllm serve Qwen/Qwen3-1.7B \
 curl http://localhost:8000/v1/models
 ```
 
-## 5. 正式运行
+## 6. 正式运行
 
 建议顺序：
 
@@ -125,7 +136,7 @@ curl http://localhost:8000/v1/models
 | 第 3 组 仅做还原 | `--group restore` |
 | 第 4 组 仅做判断 | `--group judge` |
 
-## 6. 中断与续跑
+## 7. 中断与续跑
 
 运行中断（断电、服务崩溃、Ctrl+C）后，用原来的运行目录续跑，只会补跑缺失和出错的调用：
 
@@ -139,7 +150,7 @@ boltcheck run --resume runs/<运行 ID>
 boltcheck evaluate runs/<运行 ID>
 ```
 
-## 7. 运行目录里有什么
+## 8. 运行目录里有什么
 
 | 文件 | 内容 |
 |---|---|
@@ -148,8 +159,9 @@ boltcheck evaluate runs/<运行 ID>
 | `metrics.json` | 全部指标、错误归因、分组结果 |
 | `report.md` | 便于阅读的报告 |
 | `log_row.md` | 粘贴到实验日志的一行 |
+| `view.html` | 网页查看器：标准答案与模型复原的矩阵并排，复原错的格子标红并给出正确值，可筛选判断错误、复原错误、格式无效、行列写反的样本 |
 
-## 8. 常见问题
+## 9. 常见问题
 
 - **连接失败**：先用 `curl` 确认服务已启动、端口正确。本地地址（localhost、127.0.0.1）会自动绕过系统代理。
 - **显存不够**：调小 `--max-model-len`，或加 `--kv-cache-dtype fp8`。注意 `--gpu-memory-utilization` 是占整张卡的比例，桌面程序占用的显存也要算进去。
