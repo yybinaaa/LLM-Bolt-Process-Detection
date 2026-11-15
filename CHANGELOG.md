@@ -1,6 +1,37 @@
 # 变更日志
 
-本文件记录实验方案与代码的重要变更，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。方案正文以 `docs/experiment-plan.md` 为准，逐行改动可在 Git 提交记录中查看。
+本文件记录实验方案、数据集与代码的重要变更，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。方案正文以 `docs/experiment-plan.md` 为准，逐行改动可在 Git 提交记录中查看。版本规则见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## [代码 0.1.0] - 2026-11-15
+
+实现方案 v1.2 的完整实验流水线。
+
+### 新增
+
+- `boltcheck` 命令行工具：`generate`、`verify-data`、`show-prompt`、`run`、`evaluate`。
+- 程序规则基线：层级计算、违规步形式化定义、分组标签（`grid.py`、`rules.py`）。
+- 交换、插入、整段提前三种违规构造（`perturb.py`）。
+- 按配额生成数据集，固定种子、去重、配额不满足时报错（`dataset.py`）。
+- 数据集 `data/v1.1`（种子 20261115，200 条）：合规 100 条；不合规按交换 34、插入 33、整段提前 33 构造；跨层距离 1 / 2～3 为 54 / 46 条，前段 / 后段为 60 / 40 条，单处 / 多处为 61 / 39 条，边界难例 23 条。
+- 四组对照的提示词，提示词版本 v1.1（`prompts.py`）。
+- 模型调用：OpenAI 兼容接口（本地 vLLM 或远程 API，仅用标准库）、程序规则基线、模拟错误输出三种后端；运行前检查服务连通性和模型名、重试、断点续跑、本地地址绕过系统代理；可选用 nvidia-smi 记录峰值显存（`backends.py`、`runner.py`）。
+- 输出解析与格式校验，兼容思考标签和代码块（`parse.py`）。
+- 评测：方案第八节全部指标、转置矩阵比例、自洽率、错误归因、按五个维度分组、性能统计；生成报告和实验日志行（`evaluate.py`）。
+- 模型配置 `configs/models.toml`：Qwen3-VL-2B-Instruct（greedy / instruct-sampled）、Qwen3-VL-2B-Thinking（thinking）、API 上限参考。
+- 25 项测试，包括数据可复现性、形式化定义与文字定义等价、首次违规步上限、假 vLLM 服务器的接口测试；GitHub Actions 在 Python 3.10～3.12 上运行。
+- 文档：本地运行指南、实验日志、迭代规范。
+
+## [方案 v1.2] - 2026-11-15
+
+### 修改
+
+- 第七节：本地主测模型由 Qwen3.5-4B / 9B（INT4）改为 Qwen3-VL-2B-Instruct（BF16，不量化）；量化对比移到后续轻量化阶段。
+- 第七节：思考模式对比改为 Qwen3-VL-2B-Instruct 对比 Qwen3-VL-2B-Thinking（Qwen3-VL 的思考模式是单独的模型版本，没有开关）。
+- 第七节：采样参数按 Qwen3-VL 模型卡调整；presence_penalty 默认不加，作为消融项。
+
+### 未变
+
+- 第一至六节、第八、九节；数据集规格仍为 v1.1。
 
 ## [方案 v1.1] - 2026-11-15
 
