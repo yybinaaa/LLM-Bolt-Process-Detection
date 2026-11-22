@@ -70,6 +70,19 @@ presence_penalty = 0.0
 max_tokens = 16384
 chat_template_kwargs = { enable_thinking = true }
 
+[profiles.thinking-once]
+# 思考模式只跑 1 次（10 条试看用，耗时约为 thinking 的三分之一），参数同 thinking。
+repeats = 1
+seed = 1234
+[profiles.thinking-once.params]
+temperature = 0.6
+top_p = 0.95
+top_k = 20
+min_p = 0.0
+presence_penalty = 0.0
+max_tokens = 16384
+chat_template_kwargs = { enable_thinking = true }
+
 # ---------- 模型 ----------
 # 一次只起一个本地模型，所有本地模型共用 8000 端口；model 必须与 vllm serve 的 --served-model-name 一致。
 
@@ -82,6 +95,17 @@ quantization = "INT4 AWQ（W4A16，社区量化版）"
 api_key_env = ""
 timeout_s = 600
 profiles = ["greedy", "greedy-json", "sampled"]
+
+[models."qwen3-4b-thinking-2507-int4"]
+# 与主测同尺寸的思考版（Qwen3-4B-Instruct-2507 本身没有思考模式，思考版是单独发布的 Qwen3-4B-Thinking-2507）。
+# 只工作在思考模式；思考很长，上下文开到 20480，KV 缓存更大，显存预计约 5.5～6.5GB，可能超出 3～5GB 目标。
+base_url = "http://localhost:8000/v1"
+model = "qwen3-4b-thinking-2507-int4"
+hf_repo = "cpatonn/Qwen3-4B-Thinking-2507-AWQ-4bit"
+quantization = "INT4 AWQ（W4A16，社区量化版）"
+api_key_env = ""
+timeout_s = 1800
+profiles = ["thinking-once", "thinking"]
 
 [models."phi-4-mini-instruct-int4"]
 # 跨家族对比，预估约 4～4.5GB
