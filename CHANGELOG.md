@@ -11,6 +11,7 @@
 - 模型 `qwen3-4b-thinking-2507-int4`（cpatonn/Qwen3-4B-Thinking-2507-AWQ-4bit）：与主测同尺寸的思考版；running.md 增加 vLLM 启动命令（上下文 20480）。
 - 采样配置 `thinking-once`：参数同 `thinking`，每条只跑 1 次。
 - 运行清单 configs/runs/qwen3-4b-thinking-10.toml：同样 10 条样本，先第 4 组、再第 5 组。
+- 登记 Qwen3-4B INT4 提示词 v1.6 两阶段自动试跑（5 条，运行 20261115-233234_pipeline_qwen3-4b-instruct-2507-int4_greedy），附原始结果、查看器与 GitHub 实验归档链接；本次为试跑。
 
 ## [方案 v1.14] - 2026-11-22
 
