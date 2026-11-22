@@ -69,6 +69,23 @@ vllm serve microsoft/Phi-4-mini-instruct \
   --gpu-memory-utilization 0.6 --enforce-eager
 ```
 
+**思考模式：Qwen3-4B-Thinking-2507，INT4**（与主测同尺寸；只工作在思考模式，预估约 5.5～6.5GB）
+
+Qwen3-4B-Instruct-2507 没有思考模式，思考版是单独的模型，需要另起服务（先停掉主测服务）。思考很长，上下文开到 20480：
+
+```bash
+vllm serve cpatonn/Qwen3-4B-Thinking-2507-AWQ-4bit \
+  --served-model-name qwen3-4b-thinking-2507-int4 \
+  --port 8000 --max-model-len 20480 \
+  --gpu-memory-utilization 0.8 --enforce-eager
+```
+
+显存不够启动时，可以把 `--max-model-len` 降到 16384，或加 `--kv-cache-dtype fp8`（RTX 40 系列等支持 FP8 的显卡）。然后跑 10 条（先第 4 组、再第 5 组，每条 1 次）：
+
+```bash
+boltcheck pilot --config configs/runs/qwen3-4b-thinking-10.toml --gpu-monitor
+```
+
 **低配档与思考模式对比：Qwen3-1.7B，INT8**（非思考约 3GB，思考约 4.5～5GB）
 
 思考模式输出很长，上下文要开到 18432；同一个服务既能跑非思考也能跑思考，由请求里的 `enable_thinking` 决定。

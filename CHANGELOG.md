@@ -2,6 +2,22 @@
 
 本文件记录实验方案、数据集与代码的重要变更，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。方案正文以 `docs/experiment-plan.md` 为准，逐行改动可在 Git 提交记录中查看。版本规则见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
+## [代码 0.12.0] - 2026-11-22
+
+对应方案 v1.14、提示词 v1.6（提示词不变）。
+
+### 新增
+
+- 模型 `qwen3-4b-thinking-2507-int4`（cpatonn/Qwen3-4B-Thinking-2507-AWQ-4bit）：与主测同尺寸的思考版；running.md 增加 vLLM 启动命令（上下文 20480）。
+- 采样配置 `thinking-once`：参数同 `thinking`，每条只跑 1 次。
+- 运行清单 configs/runs/qwen3-4b-thinking-10.toml：同样 10 条样本，先第 4 组、再第 5 组。
+
+## [方案 v1.14] - 2026-11-22
+
+### 修改
+
+- 第七节：增加本地思考模式 10 条试看，先于大模型对比。
+
 ## [代码 0.11.0] - 2026-11-15
 
 对应方案 v1.13、提示词 v1.6（提示词不变）。
