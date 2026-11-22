@@ -182,6 +182,33 @@ timeout_s = 1800
 profiles = ["api", "api-nothink"]
 drop_params = ["chat_template_kwargs", "top_k", "min_p", "seed"]
 
+[models.deepseek-flash]
+base_url = "https://api.deepseek.com"
+model = "deepseek-flash"
+api_key_env = "DEEPSEEK_API_KEY"
+vision = true
+timeout_s = 900
+profiles = ["api", "api-nothink"]
+drop_params = ["chat_template_kwargs", "top_k", "min_p", "seed"]
+
+[models.qwen3-vl-plus]
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+model = "qwen3-vl-plus"
+api_key_env = "DASHSCOPE_API_KEY"
+vision = true
+timeout_s = 600
+profiles = ["api"]
+drop_params = ["chat_template_kwargs", "top_k", "min_p", "seed"]
+
+[models.qwen3-vl-flash]
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+model = "qwen3-vl-flash"
+api_key_env = "DASHSCOPE_API_KEY"
+vision = true
+timeout_s = 600
+profiles = ["api"]
+drop_params = ["chat_template_kwargs", "top_k", "min_p", "seed"]
+
 [models.glm]
 # 智谱 GLM（OpenAI 兼容）：https://docs.bigmodel.cn/cn/guide/develop/openai/introduction
 # 国内端点 open.bigmodel.cn；海外账号可改为 https://api.z.ai/api/paas/v4 。
