@@ -1,7 +1,9 @@
-# 大模型参考·全量（以后用）：DeepSeek、GLM 在全部 200 条样本上跑第 5 组和第 4 组（开启思考）。
+# 大模型参考·全量（暂不运行，方案 v1.15）：DeepSeek 在全部 200 条样本上跑第 5 组和第 4 组（开启思考）。
 #   boltcheck pilot --config configs/runs/api-full.toml
+# 10 条试看已确认任务可解；方案 v1.15 不再跑全量，保留本清单以便以后需要时使用。
 
 note = "大模型参考·全量"
+# 不写 ids / limit，即全部 200 条
 
 [[runs]]
 group = "pipeline"
@@ -14,15 +16,3 @@ group = "judge"
 model = "deepseek"
 profile = "api"
 purpose = "DeepSeek 第4组"
-
-[[runs]]
-group = "pipeline"
-model = "glm"
-profile = "api"
-purpose = "GLM 第5组"
-
-[[runs]]
-group = "judge"
-model = "glm"
-profile = "api"
-purpose = "GLM 第4组"
