@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="在本地模型与远程 API 间切换，使用图片和提示词提问。">
+  <title>视觉判断台 · Boltcheck</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i></span>Boltcheck</div>
+      <button type="button" id="connection" class="connection" title="重新检测本机服务和模型配置">
+        <span id="connection-label">刷新模型</span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <div class="intro">
+      <div>
+        <h1>视觉判断台</h1>
+        <p>选择模型，写下你想让它判断的问题。</p>
+      </div>
+    </div>
+
+    <section class="card model-panel" aria-label="模型设置">
+      <div class="model-control">
+        <label for="model-select">模型</label>
+        <div class="select-shell">
+          <select id="model-select" aria-describedby="model-status" disabled>
+            <option value="">正在读取模型…</option>
+          </select>
+        </div>
+        <p id="model-status" class="model-status" role="status"></p>
+      </div>
+      <div id="api-key-control" class="model-control" hidden>
+        <label for="api-key">API 密钥</label>
+        <input type="password" id="api-key" autocomplete="off" spellcheck="false" maxlength="4096" aria-describedby="key-help">
+        <p id="key-help" class="model-status">密钥只在当前页面暂用。</p>
+      </div>
+    </section>
+
+    <form id="judge-form" class="workspace">
+      <section class="card image-card" aria-labelledby="image-title">
+        <h2 id="image-title">图片</h2>
+        <input id="image-file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+        <div id="image-area" class="image-area">
+          <button type="button" id="choose-image" class="drop-target">
+            <span class="upload-icon" aria-hidden="true"></span>
+            <strong>拖入图片</strong>
+            <span><span class="pick-label">点击选择</span>或直接粘贴</span>
+            <small>JPG、PNG、WebP · 20 MB 以内</small>
+          </button>
+          <div id="image-preview" class="image-preview" hidden>
+            <img id="preview" alt="所选图片预览">
+          </div>
+          <p id="image-paused" class="image-paused" hidden>当前模型只接收文字。</p>
+        </div>
+        <div class="image-footer" id="image-actions" hidden>
+          <span id="file-name" class="file-name"></span>
+          <div class="image-buttons">
+            <button type="button" class="small-button" id="replace-image">换图</button>
+            <button type="button" class="small-button" id="remove-image">移除</button>
+          </div>
+        </div>
+        <p id="image-mode" class="model-status" hidden>图片已保留，切回图文模型后可继续用。</p>
+        <p class="error-message" id="image-error" role="alert" hidden></p>
+      </section>
+
+      <section class="card prompt-card" aria-labelledby="prompt-label">
+        <div class="card-heading">
+          <h2><label id="prompt-label" for="prompt">提示词</label></h2>
+          <button type="button" class="small-button example" id="example">填入螺栓示例</button>
+        </div>
+        <textarea id="prompt" maxlength="16000" placeholder="例如：请判断画面中的扳手是否接触螺栓，并说明你看到的依据。" spellcheck="false"></textarea>
+        <p id="destination" class="destination" hidden></p>
+        <div class="prompt-footer">
+          <span class="keyboard-hint"><kbd>Ctrl</kbd> + <kbd>Enter</kbd> 提交</span>
+          <button type="submit" id="submit" class="primary" disabled>开始判断</button>
+        </div>
+      </section>
+    </form>
+
+    <section class="card result-card" aria-labelledby="result-title" aria-live="polite" id="result">
+      <div class="card-heading">
+        <h2 id="result-title">模型回答</h2>
+        <button type="button" class="small-button" id="copy" hidden>复制回答</button>
+      </div>
+      <p id="result-status" class="result-status">提交后，回答会显示在这里。</p>
+      <p id="answer-model" class="answer-model" hidden></p>
+      <p id="answer" class="answer" hidden></p>
+    </section>
+  </main>
+</body>
+</html>
