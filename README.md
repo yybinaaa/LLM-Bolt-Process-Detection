@@ -35,6 +35,24 @@ boltcheck run --model qwen3-4b-instruct-2507-int4 --profile greedy --group joint
 
 完整步骤见 [本地运行指南](docs/running.md)。
 
+## 本地视觉判断台
+
+判断台使用浏览器界面选择图片、输入提示词和切换模型。要用本机 Ollama 看图，先启动 Ollama。首次使用时可通过 `ollama pull qwen2.5vl:3b` 下载图文模型。
+
+在仓库根目录使用已配置的 Python 环境运行以下命令，然后打开 [本地视觉判断台](http://127.0.0.1:8765/)。
+
+```powershell
+.\.venv\Scripts\python.exe .\tools\vision_ui\server.py
+```
+
+在 Linux 或 macOS 上，激活项目的 Python 环境后运行 `python tools/vision_ui/server.py`。可用 `--port` 指定网页端口。
+
+在「模型」下拉菜单选择本机 Ollama、vLLM 或远程 API。Ollama 已下载的本地模型会自动列出，启动 vLLM 或新增模型后可点「刷新模型」。图文模型支持拖入、点选或粘贴图片，文字模型只提交提示词。换模型时，图片和提示词留在页面。
+
+远程模型可在页面临时填入密钥，也可按 [本地运行指南](docs/running.md) 配置对应环境变量。提交前页面会显示接收数据的服务商域名。添加其他 OpenAI 兼容模型时，修改 [模型配置](configs/models.toml) 并在页面刷新模型列表。图文模型须在对应条目中设置 `vision = true`。
+
+前端由原生 HTML、CSS 和 JavaScript 实现。Python 服务监听 `127.0.0.1`，提供模型列表和判断接口，并将请求转发到选中的 Ollama、vLLM 或 OpenAI 兼容 API。模型的实际名称显示在回答上方。 [判断台源码](tools/vision_ui/)
+
 ## 文档
 
 - [实验方案](docs/experiment-plan.md)：当前版本 v1.14（提示词 v1.6），修改历史见 Git 提交记录

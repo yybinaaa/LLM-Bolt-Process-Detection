@@ -2,6 +2,12 @@
 
 本文件记录实验方案、数据集与代码的重要变更，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。方案正文以 `docs/experiment-plan.md` 为准，逐行改动可在 Git 提交记录中查看。版本规则见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
+## [未发布]
+
+### 新增
+
+- 新增[本地视觉判断台](README.md#本地视觉判断台)，支持图文输入、切换 Ollama、vLLM 和远程 API 模型。
+
 ## [代码 0.12.0] - 2026-11-22
 
 对应方案 v1.14、提示词 v1.6（提示词不变）。
