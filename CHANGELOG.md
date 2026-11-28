@@ -2,12 +2,15 @@
 
 本文件记录实验方案、数据集与代码的重要变更，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。方案正文以 `docs/experiment-plan.md` 为准，逐行改动可在 Git 提交记录中查看。版本规则见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-## [未发布]
+## [代码 0.13.0] - 2026-11-28
+
+对应方案 v1.14、提示词 v1.6（方案与提示词不变）。
 
 ### 新增
 
 - 新增[本地视觉判断台](README.md#本地视觉判断台)，支持图文输入、切换 Ollama、vLLM 和远程 API 模型。
 - 记录如何从目标检测结果获得[螺栓布局摘要](docs/vision-layout-sequence-workflow.md)，并用布局与时序坐标直接判断初拧顺序。
+- 视觉判断台的单元测试（tests/test_vision_ui.py，共 27 项）：图片格式与大小、提示词校验、请求组装、密钥处理、模型配置读取，以及只接受本机页面提交的检查。
 
 ## [代码 0.12.0] - 2026-11-22
 
