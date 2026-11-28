@@ -55,12 +55,18 @@ def test_run_pilot_runs_each_entry_and_survives_failures(tmp_path):
     assert "no-such-profile" in results[1]["error"]
 
 
+def test_api_ten_sample_list_uses_deepseek_only():
+    """方案 v1.15：10 条大模型参考只保留 DeepSeek。"""
+    cfg = load_pilot(ROOT / "configs" / "runs" / "api-10.toml")
+    assert {r["model"] for r in cfg["runs"]} == {"deepseek"}
+
+
 @pytest.mark.parametrize("cfg_path", sorted((ROOT / "configs" / "runs").glob("*.toml")) + [ROOT / "configs" / "pilot.toml"])
 def test_run_lists_reference_valid_models(cfg_path, monkeypatch):
     """各运行清单里的模型、配置都能在 configs/models.toml 中找到并组合使用（密钥用占位值）。"""
     from boltcheck.runner import resolve_backend
 
-    for env in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "DEEPSEEK_API_KEY", "ZAI_API_KEY"):
+    for env in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "DEEPSEEK_API_KEY"):
         monkeypatch.setenv(env, "test-key")
     cfg = load_pilot(cfg_path)
     if cfg.get("ids"):
@@ -75,13 +81,13 @@ def test_api_models_send_clean_params(monkeypatch):
 
     monkeypatch.setenv("OPENAI_API_KEY", "k")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
     cfg = str(ROOT / "configs" / "models.toml")
     gpt, _ = resolve_backend("openai", cfg, "gpt", "api")
     assert gpt.params == {"max_completion_tokens": 32768} and gpt.seed is None and not gpt.local
     claude, info = resolve_backend("openai", cfg, "claude-opus", "api")
     assert claude.params == {"max_tokens": 32768} and claude.seed is None and info["served_model"] == "claude-opus-5-5"
-    monkeypatch.setenv("ZAI_API_KEY", "k")
-    glm, _ = resolve_backend("openai", cfg, "glm", "api-nothink")
-    assert glm.params == {"max_tokens": 8192, "thinking": {"type": "disabled"}} and glm.seed is None
+    deepseek, _ = resolve_backend("openai", cfg, "deepseek", "api-nothink")
+    assert deepseek.params == {"max_tokens": 8192, "thinking": {"type": "disabled"}} and deepseek.seed is None
     local, _ = resolve_backend("openai", cfg, "qwen3-4b-instruct-2507-int4", "greedy")
     assert local.local and local.seed == 1234 and "chat_template_kwargs" in local.params

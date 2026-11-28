@@ -1,6 +1,6 @@
-# 大模型参考·10 条（方案 v1.13）：DeepSeek、GLM 在与本地模型相同的 10 条样本上跑第 5 组和第 4 组。
+# 大模型参考·10 条（方案 v1.15）：DeepSeek 在与本地模型相同的 10 条样本上跑第 5 组和第 4 组。
 #   boltcheck pilot --config configs/runs/api-10.toml
-# 先跑默认（开启思考），再跑关闭思考的对照。只设置了一个密钥时，另一个模型会报错跳过，其余照常。
+# 开启思考两组已做到 10/10；关闭思考作为对照。不再跑其他大模型。
 
 note = "大模型10条"
 ids = ["v1.1-0001", "v1.1-0002", "v1.1-0003", "v1.1-0004", "v1.1-0005", "v1.1-0006", "v1.1-0007", "v1.1-0008", "v1.1-0015", "v1.1-0019"]
@@ -9,46 +9,22 @@ ids = ["v1.1-0001", "v1.1-0002", "v1.1-0003", "v1.1-0004", "v1.1-0005", "v1.1-00
 group = "pipeline"
 model = "deepseek"
 profile = "api"
-purpose = "DeepSeek 第5组（思考）"
+purpose = "DeepSeek 第5组（开启思考）"
 
 [[runs]]
 group = "judge"
 model = "deepseek"
 profile = "api"
-purpose = "DeepSeek 第4组（思考）"
-
-[[runs]]
-group = "pipeline"
-model = "glm"
-profile = "api"
-purpose = "GLM 第5组（思考）"
-
-[[runs]]
-group = "judge"
-model = "glm"
-profile = "api"
-purpose = "GLM 第4组（思考）"
+purpose = "DeepSeek 第4组（开启思考）"
 
 [[runs]]
 group = "pipeline"
 model = "deepseek"
 profile = "api-nothink"
-purpose = "DeepSeek 第5组（关闭思考）"
+purpose = "DeepSeek 第5组（关闭思考对照）"
 
 [[runs]]
 group = "judge"
 model = "deepseek"
 profile = "api-nothink"
-purpose = "DeepSeek 第4组（关闭思考）"
-
-[[runs]]
-group = "pipeline"
-model = "glm"
-profile = "api-nothink"
-purpose = "GLM 第5组（关闭思考）"
-
-[[runs]]
-group = "judge"
-model = "glm"
-profile = "api-nothink"
-purpose = "GLM 第4组（关闭思考）"
+purpose = "DeepSeek 第4组（关闭思考对照）"
